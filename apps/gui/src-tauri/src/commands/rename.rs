@@ -1,0 +1,763 @@
+// Rename preview and execution commands for tidy-app GUI
+// Command names use snake_case per architecture requirements
+//
+// Story 6.4: Visual Rename Review (AC1, AC5)
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::Path;
+use thiserror::Error;
+use uuid::Uuid;
+
+use super::scanner::FileInfo;
+
+// =============================================================================
+// Error Types
+// =============================================================================
+
+#[derive(Debug, Error)]
+pub enum RenameError {
+    #[error("Preview generation failed: {0}")]
+    PreviewFailed(String),
+    #[error("Rename operation failed: {0}")]
+    RenameFailed(String),
+    #[error("Validation failed: {0}")]
+    ValidationFailed(String),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
+impl Serialize for RenameError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+// =============================================================================
+// Rename Types (matching @tidy-app/core schema)
+// =============================================================================
+
+/// Status of a rename proposal
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RenameStatus {
+    Ready,
+    Conflict,
+    MissingData,
+    NoChange,
+    InvalidName,
+}
+
+/// Issue found with a rename proposal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameIssue {
+    /// Issue code for programmatic handling
+    pub code: String,
+    /// Human-readable message
+    pub message: String,
+    /// Field or placeholder that caused the issue (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+}
+
+/// A single file rename proposal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameProposal {
+    /// Unique identifier for selection tracking
+    pub id: String,
+    /// Full path to original file
+    pub original_path: String,
+    /// Original filename (with extension)
+    pub original_name: String,
+    /// Proposed new filename (with extension)
+    pub proposed_name: String,
+    /// Full path with proposed name
+    pub proposed_path: String,
+    /// Status of this proposal
+    pub status: RenameStatus,
+    /// Issues found with this proposal
+    pub issues: Vec<RenameIssue>,
+    /// Metadata source badges (e.g., "EXIF", "PDF", "filename")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata_sources: Option<Vec<String>>,
+}
+
+/// Summary statistics for a rename preview
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewSummary {
+    pub total: usize,
+    pub ready: usize,
+    pub conflicts: usize,
+    pub missing_data: usize,
+    pub no_change: usize,
+    pub invalid_name: usize,
+}
+
+/// Complete rename preview result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamePreview {
+    /// All file proposals
+    pub proposals: Vec<RenameProposal>,
+    /// Summary statistics
+    pub summary: PreviewSummary,
+    /// When the preview was generated
+    pub generated_at: DateTime<Utc>,
+    /// Template pattern used
+    pub template_used: String,
+}
+
+/// Outcome of a single file rename
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RenameOutcome {
+    Success,
+    Failed,
+    Skipped,
+}
+
+/// Result of renaming a single file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileRenameResult {
+    pub proposal_id: String,
+    pub original_path: String,
+    pub original_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_name: Option<String>,
+    pub outcome: RenameOutcome,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Summary of batch rename results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchRenameSummary {
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub skipped: usize,
+}
+
+/// Complete result of a batch rename operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchRenameResult {
+    pub success: bool,
+    pub results: Vec<FileRenameResult>,
+    pub summary: BatchRenameSummary,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: DateTime<Utc>,
+    pub duration_ms: u64,
+}
+
+// =============================================================================
+// Template Types
+// =============================================================================
+
+/// Options for generating a preview
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratePreviewOptions {
+    /// Custom date format (default: YYYY-MM-DD)
+    #[serde(default)]
+    pub date_format: Option<String>,
+}
+
+/// Options for executing renames
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteRenameOptions {
+    /// IDs of proposals to rename (if empty, renames all ready)
+    #[serde(default)]
+    pub proposal_ids: Option<Vec<String>>,
+}
+
+// =============================================================================
+// Template Processing
+// =============================================================================
+
+/// Characters that are invalid in filenames
+const INVALID_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
+
+/// Reserved Windows filenames
+const RESERVED_NAMES: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// Check if a filename is valid
+fn is_valid_filename(name: &str) -> bool {
+    if name.is_empty() || name.len() > 255 {
+        return false;
+    }
+
+    // Check for invalid characters
+    if name.chars().any(|c| INVALID_CHARS.contains(&c)) {
+        return false;
+    }
+
+    // Check for reserved names (Windows)
+    let name_upper = name.to_uppercase();
+    let base_name = name_upper.split('.').next().unwrap_or("");
+    if RESERVED_NAMES.contains(&base_name) {
+        return false;
+    }
+
+    // Check for trailing spaces or dots
+    if name.ends_with(' ') || name.ends_with('.') {
+        return false;
+    }
+
+    true
+}
+
+/// Apply a template pattern to generate a new filename
+fn apply_template(file: &FileInfo, pattern: &str, date_format: &str) -> (String, Vec<String>) {
+    let mut result = pattern.to_string();
+    let mut sources: Vec<String> = Vec::new();
+
+    // Replace {name} or {original} with original filename (without extension)
+    if result.contains("{name}") || result.contains("{original}") {
+        result = result.replace("{name}", &file.name);
+        result = result.replace("{original}", &file.name);
+        sources.push("filename".to_string());
+    }
+
+    // Replace {ext} with extension
+    if result.contains("{ext}") {
+        result = result.replace("{ext}", &file.extension);
+    }
+
+    // Replace {date} with file modification date
+    if result.contains("{date}") {
+        let date_str = format_date(&file.modified_at, date_format);
+        result = result.replace("{date}", &date_str);
+        sources.push("file-date".to_string());
+    }
+
+    // Replace {date:FORMAT} patterns
+    let date_pattern = regex_lite::Regex::new(r"\{date:([^}]+)\}").unwrap();
+    let mut new_result = result.clone();
+    for cap in date_pattern.captures_iter(&result) {
+        if let Some(format_match) = cap.get(1) {
+            let custom_format = format_match.as_str();
+            let date_str = format_date(&file.modified_at, custom_format);
+            new_result = new_result.replace(&cap[0], &date_str);
+            if !sources.contains(&"file-date".to_string()) {
+                sources.push("file-date".to_string());
+            }
+        }
+    }
+    result = new_result;
+
+    // Replace {year}, {month}, {day}
+    if result.contains("{year}") {
+        result = result.replace("{year}", &file.modified_at.format("%Y").to_string());
+        if !sources.contains(&"file-date".to_string()) {
+            sources.push("file-date".to_string());
+        }
+    }
+    if result.contains("{month}") {
+        result = result.replace("{month}", &file.modified_at.format("%m").to_string());
+    }
+    if result.contains("{day}") {
+        result = result.replace("{day}", &file.modified_at.format("%d").to_string());
+    }
+
+    // Add extension if not already present in pattern
+    if !result.contains('.') && !file.extension.is_empty() {
+        result = format!("{}.{}", result, file.extension);
+    } else if !result.ends_with(&format!(".{}", file.extension)) && !file.extension.is_empty() {
+        // Ensure correct extension
+        if let Some(pos) = result.rfind('.') {
+            result = format!("{}.{}", &result[..pos], file.extension);
+        }
+    }
+
+    (result, sources)
+}
+
+/// Format a date according to a pattern
+fn format_date(date: &DateTime<Utc>, format: &str) -> String {
+    // Convert common format tokens to chrono format
+    let chrono_format = format
+        .replace("YYYY", "%Y")
+        .replace("MM", "%m")
+        .replace("DD", "%d")
+        .replace("HH", "%H")
+        .replace("mm", "%M")
+        .replace("ss", "%S");
+
+    date.format(&chrono_format).to_string()
+}
+
+// =============================================================================
+// Preview Generation
+// =============================================================================
+
+/// Generate a rename preview for files using a template
+///
+/// Command name: generate_preview (snake_case per architecture)
+#[tauri::command]
+pub async fn generate_preview(
+    files: Vec<FileInfo>,
+    template_pattern: String,
+    options: Option<GeneratePreviewOptions>,
+) -> Result<RenamePreview, RenameError> {
+    let options = options.unwrap_or_default();
+    let date_format = options.date_format.as_deref().unwrap_or("YYYY-MM-DD");
+
+    let mut proposals: Vec<RenameProposal> = Vec::new();
+    let mut proposed_paths: HashMap<String, Vec<String>> = HashMap::new();
+
+    // First pass: generate proposals
+    for file in &files {
+        let id = Uuid::new_v4().to_string();
+        let (proposed_name, metadata_sources) = apply_template(file, &template_pattern, date_format);
+
+        let dir = Path::new(&file.path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let proposed_path = if dir.is_empty() {
+            proposed_name.clone()
+        } else {
+            format!("{}/{}", dir, proposed_name)
+        };
+
+        let mut issues: Vec<RenameIssue> = Vec::new();
+        let mut status = RenameStatus::Ready;
+
+        // Check for no change
+        if proposed_name == file.full_name {
+            status = RenameStatus::NoChange;
+        }
+
+        // Check for invalid filename
+        if !is_valid_filename(&proposed_name) {
+            issues.push(RenameIssue {
+                code: "INVALID_NAME".to_string(),
+                message: "Proposed filename contains invalid characters".to_string(),
+                field: None,
+            });
+            status = RenameStatus::InvalidName;
+        }
+
+        // Track for conflict detection
+        let path_key = proposed_path.to_lowercase();
+        proposed_paths
+            .entry(path_key)
+            .or_default()
+            .push(id.clone());
+
+        proposals.push(RenameProposal {
+            id,
+            original_path: file.path.clone(),
+            original_name: file.full_name.clone(),
+            proposed_name,
+            proposed_path,
+            status,
+            issues,
+            metadata_sources: if metadata_sources.is_empty() {
+                None
+            } else {
+                Some(metadata_sources)
+            },
+        });
+    }
+
+    // Second pass: detect batch conflicts
+    for (_, ids) in &proposed_paths {
+        if ids.len() > 1 {
+            for id in ids {
+                if let Some(proposal) = proposals.iter_mut().find(|p| &p.id == id) {
+                    if proposal.status == RenameStatus::Ready {
+                        proposal.status = RenameStatus::Conflict;
+                        proposal.issues.push(RenameIssue {
+                            code: "DUPLICATE_NAME".to_string(),
+                            message: "Another file would have the same name".to_string(),
+                            field: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Third pass: check for filesystem conflicts
+    for proposal in &mut proposals {
+        if proposal.status == RenameStatus::Ready {
+            // Check if target already exists (and isn't the source file)
+            let target_path = Path::new(&proposal.proposed_path);
+            if target_path.exists() && proposal.proposed_path != proposal.original_path {
+                proposal.status = RenameStatus::Conflict;
+                proposal.issues.push(RenameIssue {
+                    code: "FILE_EXISTS".to_string(),
+                    message: "A file with this name already exists".to_string(),
+                    field: None,
+                });
+            }
+        }
+    }
+
+    // Calculate summary
+    let summary = PreviewSummary {
+        total: proposals.len(),
+        ready: proposals.iter().filter(|p| p.status == RenameStatus::Ready).count(),
+        conflicts: proposals.iter().filter(|p| p.status == RenameStatus::Conflict).count(),
+        missing_data: proposals.iter().filter(|p| p.status == RenameStatus::MissingData).count(),
+        no_change: proposals.iter().filter(|p| p.status == RenameStatus::NoChange).count(),
+        invalid_name: proposals.iter().filter(|p| p.status == RenameStatus::InvalidName).count(),
+    };
+
+    Ok(RenamePreview {
+        proposals,
+        summary,
+        generated_at: Utc::now(),
+        template_used: template_pattern,
+    })
+}
+
+// =============================================================================
+// Rename Execution
+// =============================================================================
+
+/// Execute batch rename operation on selected proposals
+///
+/// Command name: execute_rename (snake_case per architecture)
+#[tauri::command]
+pub async fn execute_rename(
+    proposals: Vec<RenameProposal>,
+    options: Option<ExecuteRenameOptions>,
+) -> Result<BatchRenameResult, RenameError> {
+    let started_at = Utc::now();
+    let options = options.unwrap_or_default();
+
+    // Filter to only rename specified IDs (or all ready if none specified)
+    let selected_ids: Option<HashSet<String>> = options
+        .proposal_ids
+        .map(|ids| ids.into_iter().collect());
+
+    let mut results: Vec<FileRenameResult> = Vec::new();
+
+    for proposal in &proposals {
+        // Check if this proposal should be processed
+        let should_process = match &selected_ids {
+            Some(ids) => ids.contains(&proposal.id),
+            None => true, // Process all if no IDs specified
+        };
+
+        if !should_process {
+            results.push(FileRenameResult {
+                proposal_id: proposal.id.clone(),
+                original_path: proposal.original_path.clone(),
+                original_name: proposal.original_name.clone(),
+                new_path: None,
+                new_name: None,
+                outcome: RenameOutcome::Skipped,
+                error: Some("Not selected".to_string()),
+            });
+            continue;
+        }
+
+        // Skip non-ready proposals
+        if proposal.status != RenameStatus::Ready {
+            results.push(FileRenameResult {
+                proposal_id: proposal.id.clone(),
+                original_path: proposal.original_path.clone(),
+                original_name: proposal.original_name.clone(),
+                new_path: None,
+                new_name: None,
+                outcome: RenameOutcome::Skipped,
+                error: Some(format!("Status: {:?}", proposal.status)),
+            });
+            continue;
+        }
+
+        // Skip if no change needed
+        if proposal.original_name == proposal.proposed_name {
+            results.push(FileRenameResult {
+                proposal_id: proposal.id.clone(),
+                original_path: proposal.original_path.clone(),
+                original_name: proposal.original_name.clone(),
+                new_path: None,
+                new_name: None,
+                outcome: RenameOutcome::Skipped,
+                error: Some("No change needed".to_string()),
+            });
+            continue;
+        }
+
+        // Attempt the rename
+        match fs::rename(&proposal.original_path, &proposal.proposed_path) {
+            Ok(_) => {
+                results.push(FileRenameResult {
+                    proposal_id: proposal.id.clone(),
+                    original_path: proposal.original_path.clone(),
+                    original_name: proposal.original_name.clone(),
+                    new_path: Some(proposal.proposed_path.clone()),
+                    new_name: Some(proposal.proposed_name.clone()),
+                    outcome: RenameOutcome::Success,
+                    error: None,
+                });
+            }
+            Err(e) => {
+                results.push(FileRenameResult {
+                    proposal_id: proposal.id.clone(),
+                    original_path: proposal.original_path.clone(),
+                    original_name: proposal.original_name.clone(),
+                    new_path: None,
+                    new_name: None,
+                    outcome: RenameOutcome::Failed,
+                    error: Some(e.to_string()),
+                });
+            }
+        }
+    }
+
+    let completed_at = Utc::now();
+    let duration_ms = (completed_at - started_at).num_milliseconds() as u64;
+
+    let summary = BatchRenameSummary {
+        total: results.len(),
+        succeeded: results.iter().filter(|r| r.outcome == RenameOutcome::Success).count(),
+        failed: results.iter().filter(|r| r.outcome == RenameOutcome::Failed).count(),
+        skipped: results.iter().filter(|r| r.outcome == RenameOutcome::Skipped).count(),
+    };
+
+    let success = summary.failed == 0;
+
+    Ok(BatchRenameResult {
+        success,
+        results,
+        summary,
+        started_at,
+        completed_at,
+        duration_ms,
+    })
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::scanner::{FileCategory, MetadataCapability};
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    fn create_test_file_info(name: &str, ext: &str, path: &str) -> FileInfo {
+        FileInfo {
+            path: path.to_string(),
+            name: name.to_string(),
+            extension: ext.to_string(),
+            full_name: if ext.is_empty() {
+                name.to_string()
+            } else {
+                format!("{}.{}", name, ext)
+            },
+            size: 1024,
+            created_at: Utc::now(),
+            modified_at: Utc::now(),
+            relative_path: format!("{}.{}", name, ext),
+            category: FileCategory::Image,
+            metadata_supported: true,
+            metadata_capability: MetadataCapability::Full,
+        }
+    }
+
+    #[test]
+    fn test_is_valid_filename() {
+        assert!(is_valid_filename("test.jpg"));
+        assert!(is_valid_filename("my-photo_2024.png"));
+        assert!(!is_valid_filename("test/file.jpg")); // Contains /
+        assert!(!is_valid_filename("test:file.jpg")); // Contains :
+        assert!(!is_valid_filename("CON.txt")); // Reserved name
+        assert!(!is_valid_filename("")); // Empty
+        assert!(!is_valid_filename("test.")); // Trailing dot
+    }
+
+    #[test]
+    fn test_apply_template_basic() {
+        let file = create_test_file_info("photo", "jpg", "/home/user/photo.jpg");
+        let (result, sources) = apply_template(&file, "{name}.{ext}", "YYYY-MM-DD");
+        assert_eq!(result, "photo.jpg");
+        assert!(sources.contains(&"filename".to_string()));
+    }
+
+    #[test]
+    fn test_apply_template_with_date() {
+        let mut file = create_test_file_info("photo", "jpg", "/home/user/photo.jpg");
+        file.modified_at = DateTime::parse_from_rfc3339("2024-07-15T10:30:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let (result, sources) = apply_template(&file, "{date}_{name}.{ext}", "YYYY-MM-DD");
+        assert_eq!(result, "2024-07-15_photo.jpg");
+        assert!(sources.contains(&"file-date".to_string()));
+    }
+
+    #[test]
+    fn test_apply_template_custom_date_format() {
+        let mut file = create_test_file_info("photo", "jpg", "/home/user/photo.jpg");
+        file.modified_at = DateTime::parse_from_rfc3339("2024-07-15T10:30:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let (result, _) = apply_template(&file, "{date:YYYYMMDD}_{name}.{ext}", "YYYY-MM-DD");
+        assert_eq!(result, "20240715_photo.jpg");
+    }
+
+    #[tokio::test]
+    async fn test_generate_preview_basic() {
+        let files = vec![
+            create_test_file_info("photo1", "jpg", "/tmp/photo1.jpg"),
+            create_test_file_info("photo2", "jpg", "/tmp/photo2.jpg"),
+        ];
+
+        let result = generate_preview(files, "{name}_renamed.{ext}".to_string(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.proposals.len(), 2);
+        assert_eq!(result.summary.total, 2);
+        assert_eq!(result.proposals[0].proposed_name, "photo1_renamed.jpg");
+        assert_eq!(result.proposals[1].proposed_name, "photo2_renamed.jpg");
+    }
+
+    #[tokio::test]
+    async fn test_generate_preview_detects_no_change() {
+        let files = vec![create_test_file_info("photo", "jpg", "/tmp/photo.jpg")];
+
+        let result = generate_preview(files, "{name}.{ext}".to_string(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.proposals[0].status, RenameStatus::NoChange);
+        assert_eq!(result.summary.no_change, 1);
+    }
+
+    #[tokio::test]
+    async fn test_generate_preview_detects_conflicts() {
+        let files = vec![
+            create_test_file_info("photo1", "jpg", "/tmp/photo1.jpg"),
+            create_test_file_info("photo2", "jpg", "/tmp/photo2.jpg"),
+        ];
+
+        // Template that produces same output for different files
+        let result = generate_preview(files, "output.{ext}".to_string(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.summary.conflicts, 2);
+    }
+
+    #[tokio::test]
+    async fn test_execute_rename_success() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("test.jpg");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(b"test content").unwrap();
+
+        let proposal = RenameProposal {
+            id: "test-id".to_string(),
+            original_path: file_path.to_string_lossy().to_string(),
+            original_name: "test.jpg".to_string(),
+            proposed_name: "renamed.jpg".to_string(),
+            proposed_path: dir.path().join("renamed.jpg").to_string_lossy().to_string(),
+            status: RenameStatus::Ready,
+            issues: vec![],
+            metadata_sources: None,
+        };
+
+        let result = execute_rename(vec![proposal], None).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.summary.succeeded, 1);
+        assert!(dir.path().join("renamed.jpg").exists());
+        assert!(!file_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_rename_skips_non_ready() {
+        let proposal = RenameProposal {
+            id: "test-id".to_string(),
+            original_path: "/tmp/test.jpg".to_string(),
+            original_name: "test.jpg".to_string(),
+            proposed_name: "renamed.jpg".to_string(),
+            proposed_path: "/tmp/renamed.jpg".to_string(),
+            status: RenameStatus::Conflict,
+            issues: vec![],
+            metadata_sources: None,
+        };
+
+        let result = execute_rename(vec![proposal], None).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.summary.skipped, 1);
+        assert_eq!(result.summary.succeeded, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_rename_with_selection() {
+        let dir = TempDir::new().unwrap();
+
+        // Create two files
+        let file1_path = dir.path().join("test1.jpg");
+        let file2_path = dir.path().join("test2.jpg");
+        File::create(&file1_path).unwrap().write_all(b"1").unwrap();
+        File::create(&file2_path).unwrap().write_all(b"2").unwrap();
+
+        let proposals = vec![
+            RenameProposal {
+                id: "id-1".to_string(),
+                original_path: file1_path.to_string_lossy().to_string(),
+                original_name: "test1.jpg".to_string(),
+                proposed_name: "renamed1.jpg".to_string(),
+                proposed_path: dir.path().join("renamed1.jpg").to_string_lossy().to_string(),
+                status: RenameStatus::Ready,
+                issues: vec![],
+                metadata_sources: None,
+            },
+            RenameProposal {
+                id: "id-2".to_string(),
+                original_path: file2_path.to_string_lossy().to_string(),
+                original_name: "test2.jpg".to_string(),
+                proposed_name: "renamed2.jpg".to_string(),
+                proposed_path: dir.path().join("renamed2.jpg").to_string_lossy().to_string(),
+                status: RenameStatus::Ready,
+                issues: vec![],
+                metadata_sources: None,
+            },
+        ];
+
+        // Only rename the first file
+        let options = ExecuteRenameOptions {
+            proposal_ids: Some(vec!["id-1".to_string()]),
+        };
+
+        let result = execute_rename(proposals, Some(options)).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.summary.succeeded, 1);
+        assert_eq!(result.summary.skipped, 1);
+        assert!(dir.path().join("renamed1.jpg").exists());
+        assert!(file2_path.exists()); // Second file should not be renamed
+    }
+}
