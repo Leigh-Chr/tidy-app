@@ -1,0 +1,45 @@
+{
+  "name": "@tidy/core",
+  "version": "0.0.1",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/pdf-parse": "^1.1.5",
+    "jszip": "^3.10.1",
+    "pdf-lib": "^1.17.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.16"
+  },
+  "dependencies": {
+    "env-paths": "^3.0.0",
+    "exifreader": "^4.35.0",
+    "fast-xml-parser": "^5.3.3",
+    "node-stream-zip": "^1.15.0",
+    "pdf-parse": "^2.4.5",
+    "zod": "^4.3.5"
+  }
+}
