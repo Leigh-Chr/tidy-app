@@ -11,6 +11,7 @@
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
 
@@ -146,15 +147,17 @@ export function ScanOptions(props: ScanOptionsProps) {
             Filter by type
           </Label>
           {hasFilters && (
-            <button
+            <Button
               type="button"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => onFileTypesChange([])}
               disabled={disabled}
               data-testid="clear-filters"
             >
               Clear filters
-            </button>
+            </Button>
           )}
         </div>
         <p className="text-xs text-muted-foreground">

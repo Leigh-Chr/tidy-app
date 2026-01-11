@@ -4,6 +4,7 @@
  */
 
 import { useMemo } from "react";
+import { Button } from "@/components/ui/button";
 
 export interface FolderBreadcrumbProps {
   /** Full path to the selected folder */
@@ -76,9 +77,11 @@ export function FolderBreadcrumb({
       </span>
 
       {onClear && (
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={onClear}
-          className="ml-1 p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          className="ml-1 h-6 w-6"
           aria-label="Clear folder selection"
         >
           <svg
@@ -94,7 +97,7 @@ export function FolderBreadcrumb({
               d="M6 18L18 6M6 6l12 12"
             />
           </svg>
-        </button>
+        </Button>
       )}
     </div>
   );

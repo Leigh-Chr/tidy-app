@@ -3,12 +3,14 @@
 
 mod config;
 mod export;
+mod llm;
 mod rename;
 mod scanner;
 mod version;
 
 pub use config::{get_config, reset_config, save_config};
 pub use export::export_results;
+pub use llm::{analyze_files_with_llm, check_ollama_health, check_openai_health, list_ollama_models, list_openai_models};
 pub use rename::{execute_rename, generate_preview};
 pub use scanner::scan_folder;
 pub use version::get_version;

@@ -140,7 +140,9 @@ export function checkVisionModelAvailable(
 /**
  * System prompt for vision-based naming suggestions.
  */
-export const VISION_NAMING_SYSTEM_PROMPT = `You are a file naming assistant analyzing images. Your job is to suggest descriptive filenames based on visual content.
+export const VISION_NAMING_SYSTEM_PROMPT = `You are a file naming assistant analyzing images. Your job is to evaluate existing filenames and suggest improvements ONLY when beneficial.
+
+CRITICAL RULE: The original filename often contains valuable information (dates, project codes, camera identifiers). You MUST preserve these elements unless they are clearly wrong.
 
 Guidelines:
 - Use kebab-case (lowercase with hyphens)
@@ -151,16 +153,33 @@ Guidelines:
 - For photos of people: describe setting/activity, not individuals
 - For documents/screenshots: focus on document type/topic
 - For artwork: describe style or subject matter
-- Omit file extension in suggestion`;
+- Omit file extension in suggestion
+
+IMPORTANT - When to keep the original name (set keepOriginal: true):
+- The original name already describes the image content well
+- The original contains important identifiers, dates, or codes
+- The image content doesn't provide significantly better naming information
+- Any improvement would lose important context from the original
+
+When suggesting a new name:
+- Merge relevant parts of the original with visual insights
+- Preserve dates, identifiers, or codes from the original
+- Only change what genuinely improves clarity`;
 
 /**
  * Create the vision analysis prompt.
  */
-function createVisionPrompt(): string {
-  return `Analyze this image and suggest a descriptive filename.
+function createVisionPrompt(originalName: string): string {
+  return `Evaluate this image and decide if the current filename needs improvement.
+
+Current filename: "${originalName}"
+
+If the current filename is already descriptive and meaningful (contains relevant subject, date, or context), set keepOriginal to true. Only suggest a new name if it would be a significant improvement.
+
+Preserve any dates, identifiers, or codes from the original filename if they appear relevant.
 
 Respond ONLY with valid JSON in this exact format (no other text):
-{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation of what you see", "keywords": ["keyword1", "keyword2"]}`;
+{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation of what you see", "keywords": ["keyword1", "keyword2"], "keepOriginal": false}`;
 }
 
 // =============================================================================
@@ -210,6 +229,10 @@ export async function analyzeImageWithVision(
     return encodeResult;
   }
 
+  // Extract original filename (without extension) for the prompt
+  const path = await import('path');
+  const originalName = path.basename(imagePath, path.extname(imagePath));
+
   // Build chat request with image
   const requestBody = {
     model: visionModel,
@@ -220,7 +243,7 @@ export async function analyzeImageWithVision(
       },
       {
         role: 'user',
-        content: createVisionPrompt(),
+        content: createVisionPrompt(originalName),
         images: [encodeResult.data],
       },
     ],

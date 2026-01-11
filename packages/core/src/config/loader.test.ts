@@ -113,6 +113,7 @@ describe('config loader', () => {
         folderStructures: [],
         ollama: {
           enabled: false,
+          provider: 'ollama',
           baseUrl: 'http://localhost:11434',
           timeout: 30000,
           models: {},
@@ -127,6 +128,12 @@ describe('config loader', () => {
           maxImageSize: 20 * 1024 * 1024,
           offlineMode: 'auto',
           healthCheckTimeout: 5000,
+          openai: {
+            apiKey: '',
+            baseUrl: 'https://api.openai.com/v1',
+            model: 'gpt-4o-mini',
+            visionModel: 'gpt-4o',
+          },
         },
       };
       await writeFile(testConfigPath, JSON.stringify(customConfig, null, 2));
@@ -301,6 +308,7 @@ describe('config loader', () => {
         // Story 10.6: offline fields should also be added with defaults
         expect(result.data.ollama).toEqual({
           enabled: false,
+          provider: 'ollama',
           baseUrl: 'http://localhost:11434',
           timeout: 30000,
           models: {},
@@ -315,6 +323,12 @@ describe('config loader', () => {
           maxImageSize: 20 * 1024 * 1024,
           offlineMode: 'auto',
           healthCheckTimeout: 5000,
+          openai: {
+            apiKey: '',
+            baseUrl: 'https://api.openai.com/v1',
+            model: 'gpt-4o-mini',
+            visionModel: 'gpt-4o',
+          },
         });
         // Existing fields should be preserved
         expect(result.data.rules).toEqual([]);

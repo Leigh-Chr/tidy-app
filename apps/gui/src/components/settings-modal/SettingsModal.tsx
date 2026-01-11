@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/stores/app-store";
 import { TemplateList } from "@/components/template-list/TemplateList";
 import { PreferencesPanel } from "@/components/preferences-panel/PreferencesPanel";
+import { AiSettings } from "@/components/ai-settings/AiSettings";
 
 export interface SettingsModalProps {
   /** Control open state externally (optional) */
@@ -32,7 +33,7 @@ export interface SettingsModalProps {
 
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"templates" | "preferences">("templates");
+  const [activeTab, setActiveTab] = useState<"templates" | "preferences" | "ai">("templates");
 
   const { config, configStatus, loadConfig } = useAppStore();
 
@@ -88,15 +89,18 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         ) : (
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as "templates" | "preferences")}
+            onValueChange={(v) => setActiveTab(v as "templates" | "preferences" | "ai")}
             className="flex-1 flex flex-col overflow-hidden"
           >
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="templates" data-testid="tab-templates">
                 Templates
               </TabsTrigger>
               <TabsTrigger value="preferences" data-testid="tab-preferences">
                 Preferences
+              </TabsTrigger>
+              <TabsTrigger value="ai" data-testid="tab-ai">
+                AI
               </TabsTrigger>
             </TabsList>
 
@@ -114,6 +118,14 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               data-testid="preferences-tab-content"
             >
               {config && <PreferencesPanel preferences={config.preferences} />}
+            </TabsContent>
+
+            <TabsContent
+              value="ai"
+              className="flex-1 overflow-auto mt-4"
+              data-testid="ai-tab-content"
+            >
+              {config && <AiSettings config={config.ollama} />}
             </TabsContent>
           </Tabs>
         )}

@@ -204,3 +204,40 @@ export {
   type BatchOfflineSummary,
   type OperationDecision,
 } from './offline.js';
+
+// Provider abstraction (Multi-provider support)
+export {
+  // Schemas
+  llmProviderTypeSchema,
+  baseProviderConfigSchema,
+  openaiConfigSchema as providerOpenaiConfigSchema,
+  llmConfigSchema,
+  // Types
+  type LlmProviderType,
+  type LlmProvider,
+  type ProviderModel,
+  type AnalysisRequest as ProviderAnalysisRequest,
+  type VisionAnalysisRequest,
+  type BaseProviderConfig,
+  type OpenAiConfig as ProviderOpenAiConfig,
+  type LlmConfig,
+  // Defaults
+  DEFAULT_OPENAI_CONFIG as PROVIDER_DEFAULT_OPENAI_CONFIG,
+  DEFAULT_LLM_CONFIG,
+} from './provider.js';
+
+// OpenAI provider
+export {
+  createOpenAiProvider,
+  isValidOpenAiKey,
+  maskApiKey,
+} from './openai.js';
+
+// Re-export provider types from types.ts
+export {
+  llmProviderSchema,
+  openaiConfigSchema,
+  type LlmProvider as LlmProviderValue,
+  type OpenAiConfig,
+  DEFAULT_OPENAI_CONFIG,
+} from './types.js';

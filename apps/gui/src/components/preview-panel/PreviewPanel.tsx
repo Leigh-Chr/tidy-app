@@ -2,7 +2,7 @@
  * Preview Panel Component
  *
  * Orchestrates all preview components: template selector, preview table,
- * action bar, confirmation dialog, and progress display.
+ * action bar, confirmation dialog, progress display, and AI analysis.
  *
  * Story 6.4 - Task 10: Main integration component
  */
@@ -16,6 +16,7 @@ import { ActionBar } from "@/components/action-bar/ActionBar";
 import { ConfirmRename } from "@/components/confirm-rename/ConfirmRename";
 import { RenameProgress } from "@/components/rename-progress/RenameProgress";
 import { TemplateSelector } from "@/components/template-selector/TemplateSelector";
+import { AiAnalysisBar } from "@/components/ai-analysis";
 
 export function PreviewPanel() {
   const {
@@ -33,6 +34,9 @@ export function PreviewPanel() {
     deselectAll,
     applyRenames,
     clearPreview,
+    aiSuggestions,
+    getFilteredFiles,
+    scanOptions,
   } = useAppStore();
 
   // Local state
@@ -62,27 +66,42 @@ export function PreviewPanel() {
 
   // Auto-generate preview when files are scanned and template is selected
   useEffect(() => {
-    if (scanResult && scanResult.files.length > 0 && selectedTemplateId && config) {
+    const filteredFiles = getFilteredFiles();
+    if (filteredFiles.length > 0 && selectedTemplateId && config) {
       const template = config.templates.find((t) => t.id === selectedTemplateId);
       if (template && previewStatus === "idle") {
-        generatePreview(scanResult.files, template.pattern);
+        generatePreview(filteredFiles, template.pattern);
       }
     }
-  }, [scanResult, selectedTemplateId, config, previewStatus, generatePreview]);
+  }, [scanResult, selectedTemplateId, config, previewStatus, generatePreview, getFilteredFiles]);
+
+  // Regenerate preview when filters change (and preview already exists)
+  useEffect(() => {
+    const filteredFiles = getFilteredFiles();
+    if (preview && selectedTemplateId && config && previewStatus === "ready") {
+      const template = config.templates.find((t) => t.id === selectedTemplateId);
+      if (template) {
+        generatePreview(filteredFiles, template.pattern);
+      }
+    }
+    // Only trigger on filter changes, not on other dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanOptions?.fileTypes]);
 
   // Handle template change
   const handleTemplateChange = useCallback(
     (templateId: string) => {
       setSelectedTemplateId(templateId);
 
-      if (scanResult && config) {
+      const filteredFiles = getFilteredFiles();
+      if (filteredFiles.length > 0 && config) {
         const template = config.templates.find((t) => t.id === templateId);
         if (template) {
-          generatePreview(scanResult.files, template.pattern);
+          generatePreview(filteredFiles, template.pattern);
         }
       }
     },
-    [scanResult, config, generatePreview]
+    [config, generatePreview, getFilteredFiles]
   );
 
   // Toggle collapsed state for a status group
@@ -181,6 +200,14 @@ export function PreviewPanel() {
         />
       )}
 
+      {/* AI Analysis Bar */}
+      {scanResult && getFilteredFiles().length > 0 && (
+        <AiAnalysisBar
+          files={getFilteredFiles()}
+          disabled={isApplying}
+        />
+      )}
+
       {/* Progress/Result Display */}
       <RenameProgress
         isInProgress={isApplying}
@@ -201,6 +228,7 @@ export function PreviewPanel() {
             onToggleSelection={toggleProposalSelection}
             collapsedGroups={collapsedGroups}
             onToggleGroup={handleToggleGroup}
+            aiSuggestions={aiSuggestions}
           />
         </div>
       )}

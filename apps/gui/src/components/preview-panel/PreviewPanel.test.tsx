@@ -8,7 +8,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PreviewPanel } from "./PreviewPanel";
 import { useAppStore, type PreviewStatus } from "@/stores/app-store";
-import type { RenamePreview, ScanResult, AppConfig, BatchRenameResult } from "@/lib/tauri";
+import type { RenamePreview, ScanResult, AppConfig, BatchRenameResult, FileInfo } from "@/lib/tauri";
 
 // Mock the store
 vi.mock("@/stores/app-store");
@@ -76,6 +76,30 @@ const createMockConfig = (): AppConfig => ({
     recursiveScan: false,
   },
   recentFolders: [],
+  ollama: {
+    enabled: false,
+    provider: "ollama",
+    baseUrl: "http://localhost:11434",
+    timeout: 30000,
+    models: {},
+    fileTypes: {
+      preset: "documents",
+      includedExtensions: [],
+      excludedExtensions: [],
+      skipWithMetadata: true,
+    },
+    visionEnabled: false,
+    skipImagesWithExif: true,
+    maxImageSize: 20 * 1024 * 1024,
+    offlineMode: "auto",
+    healthCheckTimeout: 5000,
+    openai: {
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o-mini",
+      visionModel: "gpt-4o",
+    },
+  },
 });
 
 const createMockScanResult = (): ScanResult => ({
@@ -137,6 +161,9 @@ describe("PreviewPanel", () => {
     deselectAll: vi.fn(),
     applyRenames: vi.fn(),
     clearPreview: vi.fn(),
+    aiSuggestions: new Map(),
+    getFilteredFiles: vi.fn((): FileInfo[] => []),
+    scanOptions: { recursive: false, fileTypes: [] },
   };
 
   beforeEach(() => {
@@ -149,6 +176,9 @@ describe("PreviewPanel", () => {
     mockStore.previewError = null;
     mockStore.selectedProposalIds = new Set<string>();
     mockStore.lastRenameResult = null;
+    mockStore.aiSuggestions = new Map();
+    mockStore.getFilteredFiles = vi.fn(() => []);
+    mockStore.scanOptions = { recursive: false, fileTypes: [] };
     mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
   });
 
@@ -195,6 +225,7 @@ describe("PreviewPanel", () => {
       mockStore.scanResult = createMockScanResult();
       mockStore.preview = createMockPreview();
       mockStore.previewStatus = "ready";
+      mockStore.getFilteredFiles = vi.fn(() => createMockScanResult().files);
     });
 
     it("renders preview panel with all components", () => {

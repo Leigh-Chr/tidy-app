@@ -108,6 +108,200 @@ impl Default for Preferences {
     }
 }
 
+// =============================================================================
+// Ollama Configuration (LLM Integration)
+// =============================================================================
+
+/// Model selection for Ollama
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OllamaModelsConfig {
+    /// Model for text generation/inference
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inference: Option<String>,
+    /// Vision-capable model for image analysis
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vision: Option<String>,
+}
+
+/// File type preset for LLM analysis
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileTypePreset {
+    Images,
+    #[default]
+    Documents,
+    Text,
+    All,
+    Custom,
+}
+
+/// Offline mode behavior
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum OfflineMode {
+    #[default]
+    Auto,
+    Enabled,
+    Disabled,
+}
+
+/// LLM provider type
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum LlmProvider {
+    #[default]
+    Ollama,
+    Openai,
+}
+
+fn default_openai_url() -> String {
+    "https://api.openai.com/v1".to_string()
+}
+
+fn default_openai_model() -> String {
+    "gpt-4o-mini".to_string()
+}
+
+fn default_openai_vision_model() -> String {
+    "gpt-4o".to_string()
+}
+
+/// OpenAI configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenAiConfig {
+    /// API key (empty if not configured)
+    #[serde(default)]
+    pub api_key: String,
+    /// API base URL (for Azure OpenAI or proxies)
+    #[serde(default = "default_openai_url")]
+    pub base_url: String,
+    /// Model to use for text analysis
+    #[serde(default = "default_openai_model")]
+    pub model: String,
+    /// Model to use for vision analysis
+    #[serde(default = "default_openai_vision_model")]
+    pub vision_model: String,
+}
+
+impl Default for OpenAiConfig {
+    fn default() -> Self {
+        OpenAiConfig {
+            api_key: String::new(),
+            base_url: default_openai_url(),
+            model: default_openai_model(),
+            vision_model: default_openai_vision_model(),
+        }
+    }
+}
+
+/// File type configuration for LLM analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmFileTypes {
+    /// Preset category
+    #[serde(default)]
+    pub preset: FileTypePreset,
+    /// Explicit extensions to include
+    #[serde(default)]
+    pub included_extensions: Vec<String>,
+    /// Extensions to exclude
+    #[serde(default)]
+    pub excluded_extensions: Vec<String>,
+    /// Skip files with rich metadata
+    #[serde(default = "default_true")]
+    pub skip_with_metadata: bool,
+}
+
+impl Default for LlmFileTypes {
+    fn default() -> Self {
+        LlmFileTypes {
+            preset: FileTypePreset::Documents,
+            included_extensions: Vec::new(),
+            excluded_extensions: Vec::new(),
+            skip_with_metadata: true,
+        }
+    }
+}
+
+fn default_ollama_url() -> String {
+    "http://localhost:11434".to_string()
+}
+
+fn default_timeout() -> u64 {
+    30000
+}
+
+fn default_max_image_size() -> u64 {
+    20 * 1024 * 1024 // 20MB
+}
+
+fn default_health_timeout() -> u64 {
+    5000
+}
+
+/// Complete Ollama configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OllamaConfig {
+    /// Whether LLM integration is enabled
+    #[serde(default)]
+    pub enabled: bool,
+    /// Which LLM provider to use
+    #[serde(default)]
+    pub provider: LlmProvider,
+    /// Ollama API base URL
+    #[serde(default = "default_ollama_url")]
+    pub base_url: String,
+    /// Request timeout in milliseconds
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    /// Preferred models (for Ollama)
+    #[serde(default)]
+    pub models: OllamaModelsConfig,
+    /// File type configuration
+    #[serde(default)]
+    pub file_types: LlmFileTypes,
+    /// Enable vision model analysis
+    #[serde(default)]
+    pub vision_enabled: bool,
+    /// Skip images with EXIF metadata
+    #[serde(default = "default_true")]
+    pub skip_images_with_exif: bool,
+    /// Max image size for vision analysis
+    #[serde(default = "default_max_image_size")]
+    pub max_image_size: u64,
+    /// Offline mode behavior
+    #[serde(default)]
+    pub offline_mode: OfflineMode,
+    /// Health check timeout
+    #[serde(default = "default_health_timeout")]
+    pub health_check_timeout: u64,
+    /// OpenAI configuration (used when provider is 'openai')
+    #[serde(default)]
+    pub openai: OpenAiConfig,
+}
+
+impl Default for OllamaConfig {
+    fn default() -> Self {
+        OllamaConfig {
+            enabled: false,
+            provider: LlmProvider::Ollama,
+            base_url: default_ollama_url(),
+            timeout: default_timeout(),
+            models: OllamaModelsConfig::default(),
+            file_types: LlmFileTypes::default(),
+            vision_enabled: false,
+            skip_images_with_exif: true,
+            max_image_size: default_max_image_size(),
+            offline_mode: OfflineMode::Auto,
+            health_check_timeout: default_health_timeout(),
+            openai: OpenAiConfig::default(),
+        }
+    }
+}
+
 /// Complete application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -123,6 +317,9 @@ pub struct AppConfig {
     /// Recently accessed folders
     #[serde(default)]
     pub recent_folders: Vec<String>,
+    /// Ollama/LLM configuration
+    #[serde(default)]
+    pub ollama: OllamaConfig,
 }
 
 // =============================================================================
@@ -205,6 +402,7 @@ fn default_config() -> AppConfig {
         templates: default_templates(),
         preferences: Preferences::default(),
         recent_folders: Vec::new(),
+        ollama: OllamaConfig::default(),
     }
 }
 

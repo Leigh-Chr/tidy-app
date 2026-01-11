@@ -10,6 +10,15 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // Mock CSS imports from node_modules (e.g., tauri-controls)
+    css: false,
+    deps: {
+      optimizer: {
+        web: {
+          include: ["tauri-controls"],
+        },
+      },
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],

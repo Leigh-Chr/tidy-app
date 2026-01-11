@@ -111,6 +111,109 @@ export interface Preferences {
   recursiveScan: boolean;
 }
 
+// =============================================================================
+// Ollama/LLM Types
+// =============================================================================
+
+/** LLM provider type */
+export type LlmProvider = "ollama" | "openai";
+
+/** File type preset for LLM analysis */
+export type FileTypePreset = "images" | "documents" | "text" | "all" | "custom";
+
+/** Offline mode behavior */
+export type OfflineMode = "auto" | "enabled" | "disabled";
+
+/** Model selection for Ollama */
+export interface OllamaModelsConfig {
+  /** Model for text generation/inference */
+  inference?: string;
+  /** Vision-capable model for image analysis */
+  vision?: string;
+}
+
+/** File type configuration for LLM analysis */
+export interface LlmFileTypes {
+  /** Preset category */
+  preset: FileTypePreset;
+  /** Explicit extensions to include */
+  includedExtensions: string[];
+  /** Extensions to exclude */
+  excludedExtensions: string[];
+  /** Skip files with rich metadata */
+  skipWithMetadata: boolean;
+}
+
+/** OpenAI configuration */
+export interface OpenAiConfig {
+  /** API key (empty if not configured) */
+  apiKey: string;
+  /** API base URL (for Azure OpenAI or proxies) */
+  baseUrl: string;
+  /** Model to use for text analysis */
+  model: string;
+  /** Model to use for vision analysis */
+  visionModel: string;
+}
+
+/** Complete Ollama/LLM configuration */
+export interface OllamaConfig {
+  /** Whether LLM integration is enabled */
+  enabled: boolean;
+  /** Which LLM provider to use */
+  provider: LlmProvider;
+  /** Ollama API base URL */
+  baseUrl: string;
+  /** Request timeout in milliseconds */
+  timeout: number;
+  /** Preferred models (for Ollama) */
+  models: OllamaModelsConfig;
+  /** File type configuration */
+  fileTypes: LlmFileTypes;
+  /** Enable vision model analysis */
+  visionEnabled: boolean;
+  /** Skip images with EXIF metadata */
+  skipImagesWithExif: boolean;
+  /** Max image size for vision analysis */
+  maxImageSize: number;
+  /** Offline mode behavior */
+  offlineMode: OfflineMode;
+  /** Health check timeout */
+  healthCheckTimeout: number;
+  /** OpenAI configuration (used when provider is 'openai') */
+  openai: OpenAiConfig;
+}
+
+/** Health status for LLM connection */
+export interface HealthStatus {
+  /** Whether provider is reachable */
+  available: boolean;
+  /** Number of available models */
+  modelCount?: number;
+  /** Timestamp of health check */
+  checkedAt: string;
+}
+
+/** Model information from Ollama */
+export interface OllamaModel {
+  /** Model name with tag */
+  name: string;
+  /** Model size in bytes */
+  size: number;
+  /** Model family */
+  family?: string;
+}
+
+/** Model information from OpenAI */
+export interface OpenAiModel {
+  /** Model ID (e.g., 'gpt-4o', 'gpt-4o-mini') */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Whether this model supports vision */
+  supportsVision: boolean;
+}
+
 /** Complete application configuration */
 export interface AppConfig {
   /** Config schema version */
@@ -121,6 +224,8 @@ export interface AppConfig {
   preferences: Preferences;
   /** Recently accessed folders */
   recentFolders: string[];
+  /** Ollama/LLM configuration */
+  ollama: OllamaConfig;
 }
 
 // =============================================================================
@@ -482,4 +587,181 @@ export interface ExportResult {
  */
 export async function exportResults(input: ExportInput): Promise<ExportResult> {
   return invoke<ExportResult>("export_results", { input });
+}
+
+// =============================================================================
+// LLM Functions
+// =============================================================================
+
+/**
+ * Check Ollama health status
+ *
+ * Attempts to connect to Ollama API and verify it's responding.
+ *
+ * @param baseUrl - Ollama API base URL
+ * @param timeoutMs - Request timeout in milliseconds
+ * @returns Promise resolving to health status
+ *
+ * @example
+ * ```typescript
+ * const health = await checkOllamaHealth('http://localhost:11434', 5000);
+ * if (health.available) {
+ *   console.log(`Ollama connected with ${health.modelCount} models`);
+ * }
+ * ```
+ */
+export async function checkOllamaHealth(
+  baseUrl: string,
+  timeoutMs: number
+): Promise<HealthStatus> {
+  return invoke<HealthStatus>("check_ollama_health", { baseUrl, timeoutMs });
+}
+
+/**
+ * List installed Ollama models
+ *
+ * Retrieves all locally installed models from Ollama.
+ *
+ * @param baseUrl - Ollama API base URL
+ * @param timeoutMs - Request timeout in milliseconds
+ * @returns Promise resolving to array of installed models
+ *
+ * @example
+ * ```typescript
+ * const models = await listOllamaModels('http://localhost:11434', 5000);
+ * console.log(`Found ${models.length} models`);
+ * ```
+ */
+export async function listOllamaModels(
+  baseUrl: string,
+  timeoutMs: number
+): Promise<OllamaModel[]> {
+  return invoke<OllamaModel[]>("list_ollama_models", { baseUrl, timeoutMs });
+}
+
+/**
+ * Check OpenAI health status
+ *
+ * Attempts to connect to OpenAI API and verify the API key works.
+ *
+ * @param apiKey - OpenAI API key
+ * @param baseUrl - OpenAI API base URL
+ * @param timeoutMs - Request timeout in milliseconds
+ * @returns Promise resolving to health status
+ *
+ * @example
+ * ```typescript
+ * const health = await checkOpenAiHealth('sk-...', 'https://api.openai.com/v1', 5000);
+ * if (health.available) {
+ *   console.log('OpenAI connected');
+ * }
+ * ```
+ */
+export async function checkOpenAiHealth(
+  apiKey: string,
+  baseUrl: string,
+  timeoutMs: number
+): Promise<HealthStatus> {
+  return invoke<HealthStatus>("check_openai_health", { apiKey, baseUrl, timeoutMs });
+}
+
+/**
+ * List available OpenAI models
+ *
+ * Returns recommended models for use with tidy-app.
+ *
+ * @returns Promise resolving to array of OpenAI models
+ *
+ * @example
+ * ```typescript
+ * const models = await listOpenAiModels();
+ * console.log(`Found ${models.length} models`);
+ * ```
+ */
+export async function listOpenAiModels(): Promise<OpenAiModel[]> {
+  return invoke<OpenAiModel[]>("list_openai_models");
+}
+
+// =============================================================================
+// AI Analysis Types
+// =============================================================================
+
+/** AI-suggested name for a file */
+export interface AiSuggestion {
+  /** The suggested filename (without extension) */
+  suggestedName: string;
+  /** Confidence level (0.0 - 1.0) */
+  confidence: number;
+  /** Brief reasoning for the suggestion */
+  reasoning: string;
+  /** Keywords extracted from the content */
+  keywords: string[];
+}
+
+/** Result of analyzing a single file */
+export interface FileAnalysisResult {
+  /** Original file path */
+  filePath: string;
+  /** AI suggestion (if successful) */
+  suggestion?: AiSuggestion;
+  /** Error message (if failed) */
+  error?: string;
+  /** Whether this file was skipped (e.g., not supported) */
+  skipped: boolean;
+  /** Source of analysis (ollama, openai, ollama-vision, openai-vision, etc.) */
+  source: string;
+}
+
+/** Batch analysis result */
+export interface BatchAnalysisResult {
+  /** Results for each file */
+  results: FileAnalysisResult[];
+  /** Total files processed */
+  total: number;
+  /** Files successfully analyzed */
+  analyzed: number;
+  /** Files that failed */
+  failed: number;
+  /** Files that were skipped */
+  skipped: number;
+  /** Whether LLM was available */
+  llmAvailable: boolean;
+}
+
+// =============================================================================
+// AI Analysis Functions
+// =============================================================================
+
+/**
+ * Analyze files with LLM to get naming suggestions
+ *
+ * Sends file content to configured LLM (Ollama or OpenAI) for analysis.
+ * Supports text files and images (when vision is enabled).
+ *
+ * @param filePaths - Array of file paths to analyze
+ * @param config - Ollama/LLM configuration
+ * @returns Promise resolving to batch analysis result
+ *
+ * @example
+ * ```typescript
+ * const result = await analyzeFilesWithLlm(
+ *   files.map(f => f.path),
+ *   config.ollama
+ * );
+ * console.log(`Analyzed ${result.analyzed} files`);
+ * for (const r of result.results) {
+ *   if (r.suggestion) {
+ *     console.log(`${r.filePath}: ${r.suggestion.suggestedName}`);
+ *   }
+ * }
+ * ```
+ */
+export async function analyzeFilesWithLlm(
+  filePaths: string[],
+  config: OllamaConfig
+): Promise<BatchAnalysisResult> {
+  return invoke<BatchAnalysisResult>("analyze_files_with_llm", {
+    filePaths,
+    config,
+  });
 }

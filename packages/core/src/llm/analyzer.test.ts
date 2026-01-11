@@ -98,7 +98,7 @@ describe('Analyzer', () => {
       await analyzeContent('content', defaultConfig, { fileType: 'md' });
 
       const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(callBody.prompt).toContain('file type: md');
+      expect(callBody.prompt).toContain('File type: md');
     });
 
     it('returns error when no model configured', async () => {
@@ -242,7 +242,7 @@ describe('Analyzer', () => {
       await analyzeFile(filePath, defaultConfig, { fileType: 'typescript' });
 
       const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(callBody.prompt).toContain('file type: typescript');
+      expect(callBody.prompt).toContain('File type: typescript');
     });
   });
 

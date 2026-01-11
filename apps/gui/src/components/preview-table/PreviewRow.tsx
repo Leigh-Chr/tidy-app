@@ -6,7 +6,6 @@
  * Story 6.4 - AC2: Status Indicators, AC3: File Selection, AC4: Before/After Comparison
  */
 
-import { useState } from "react";
 import {
   Check,
   AlertTriangle,
@@ -17,7 +16,9 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { RenameProposal, RenameStatus } from "@/lib/tauri";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import type { AiSuggestion, RenameProposal, RenameStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 export interface PreviewRowProps {
@@ -27,6 +28,12 @@ export interface PreviewRowProps {
   isSelected: boolean;
   /** Callback when selection is toggled */
   onToggleSelection: () => void;
+  /** AI suggestion for this file (if analyzed) */
+  aiSuggestion?: AiSuggestion;
+  /** Whether details are expanded (controlled) */
+  isExpanded?: boolean;
+  /** Callback when expand is toggled (controlled) */
+  onToggleExpand?: () => void;
 }
 
 /** Status icon and styling configuration */
@@ -93,14 +100,20 @@ function computeDiff(
   return result;
 }
 
-export function PreviewRow({ proposal, isSelected, onToggleSelection }: PreviewRowProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
+export function PreviewRow({
+  proposal,
+  isSelected,
+  onToggleSelection,
+  aiSuggestion,
+  isExpanded = false,
+  onToggleExpand,
+}: PreviewRowProps) {
   const statusConfig = STATUS_DISPLAY[proposal.status];
   const StatusIcon = statusConfig.icon;
   const diffSegments = computeDiff(proposal.originalName, proposal.proposedName);
   const hasIssues = proposal.issues.length > 0;
   const canSelect = proposal.status === "ready";
+  const hasExpandableContent = hasIssues || proposal.metadataSources?.length || aiSuggestion;
 
   return (
     <div
@@ -157,10 +170,17 @@ export function PreviewRow({ proposal, isSelected, onToggleSelection }: PreviewR
         {/* Status + Expand */}
         <div className="w-24 flex items-center justify-center gap-1">
           <StatusIcon className={cn("h-4 w-4", statusConfig.className)} />
-          {(hasIssues || proposal.metadataSources?.length) && (
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1 hover:bg-muted rounded"
+          {aiSuggestion && (
+            <Badge variant="outline" className="text-[10px] px-1 py-0 bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700">
+              AI
+            </Badge>
+          )}
+          {hasExpandableContent && onToggleExpand && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleExpand}
+              className="h-6 w-6"
               aria-label={isExpanded ? "Collapse details" : "Expand details"}
               data-testid={`preview-expand-${proposal.id}`}
             >
@@ -169,7 +189,7 @@ export function PreviewRow({ proposal, isSelected, onToggleSelection }: PreviewR
               ) : (
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -180,6 +200,38 @@ export function PreviewRow({ proposal, isSelected, onToggleSelection }: PreviewR
           className="px-4 pb-3 pt-0 pl-14 text-sm space-y-2"
           data-testid={`preview-details-${proposal.id}`}
         >
+          {/* AI Suggestion */}
+          {aiSuggestion && (
+            <div className="bg-purple-50 dark:bg-purple-950 p-2 rounded border border-purple-200 dark:border-purple-800" data-testid={`ai-suggestion-${proposal.id}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-medium text-purple-700 dark:text-purple-300">AI Suggestion</span>
+                <Badge variant="outline" className="text-[10px] px-1 py-0">
+                  {Math.round(aiSuggestion.confidence * 100)}% confident
+                </Badge>
+              </div>
+              <div className="font-mono text-sm text-purple-900 dark:text-purple-100">
+                {aiSuggestion.suggestedName}
+              </div>
+              {aiSuggestion.reasoning && (
+                <div className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                  {aiSuggestion.reasoning}
+                </div>
+              )}
+              {aiSuggestion.keywords.length > 0 && (
+                <div className="flex gap-1 mt-1 flex-wrap">
+                  {aiSuggestion.keywords.map((keyword) => (
+                    <span
+                      key={keyword}
+                      className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 text-[10px] rounded"
+                    >
+                      {keyword}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Metadata Sources */}
           {proposal.metadataSources && proposal.metadataSources.length > 0 && (
             <div className="flex items-center gap-2">
