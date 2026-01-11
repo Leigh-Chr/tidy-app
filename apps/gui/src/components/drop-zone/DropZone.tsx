@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback, useEffect, DragEvent } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 
 export interface DropZoneProps {
@@ -24,9 +25,10 @@ type DropZoneState = "default" | "hover" | "loading";
 
 /**
  * Check if we're running inside Tauri
+ * Uses the official isTauri function from @tauri-apps/api/core (Tauri 2.0+)
  */
 function isTauriEnvironment(): boolean {
-  return typeof window !== "undefined" && "__TAURI__" in window;
+  return isTauri();
 }
 
 /**
@@ -77,9 +79,8 @@ export function DropZone({
             }
           }
         });
-      } catch (error) {
+      } catch {
         // Tauri API not available (running in browser)
-        console.debug("Tauri drag-drop not available:", error);
       }
     }
 

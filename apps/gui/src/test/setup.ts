@@ -16,6 +16,7 @@ Element.prototype.scrollIntoView = vi.fn();
 // Mock Tauri API for tests
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+  isTauri: vi.fn(() => false), // Default to false for browser environment in tests
 }));
 
 // Mock Tauri dialog plugin for tests
