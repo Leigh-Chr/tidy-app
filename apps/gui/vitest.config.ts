@@ -19,7 +19,14 @@ export default defineConfig({
         "src-tauri/",
         "**/*.d.ts",
         "src/main.tsx",
+        "src/lib/tauri.ts",
       ],
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        branches: 70,
+        statements: 70,
+      },
     },
   },
   resolve: {
