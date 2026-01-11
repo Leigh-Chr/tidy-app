@@ -1,0 +1,29 @@
+# Codacy configuration
+# https://docs.codacy.com/repositories-configure/codacy-configuration-file/
+
+engines:
+  eslint:
+    enabled: true
+  trivy:
+    enabled: true
+  lizard:
+    enabled: true
+    options:
+      # Cyclomatic complexity threshold
+      CCN: 15
+      # Lines of code per function
+      NLOC: 50
+      # Lines of code per file
+      file_nloc: 500
+      # Max parameters per function
+      arguments: 8
+
+exclude_paths:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/.turbo/**"
+  - "**/coverage/**"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/e2e/**"
+  - "apps/gui/src-tauri/target/**"

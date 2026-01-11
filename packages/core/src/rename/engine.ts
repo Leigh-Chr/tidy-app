@@ -360,7 +360,7 @@ export async function executeBatchRename(
     }
 
     return ok(batchResult);
-  } catch (error) {
+  } catch {
     const completedAt = new Date();
     const batchResult: BatchRenameResult = {
       success: false,

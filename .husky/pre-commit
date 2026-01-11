@@ -1,0 +1,8 @@
+# Block .env files from being committed
+if git diff --cached --name-only | grep -qE '^\.(env|env\..*)$'; then
+  echo "Error: .env files should not be committed"
+  exit 1
+fi
+
+# Run lint on all packages
+pnpm run lint

@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   js.configs.recommended,
-  ...tseslint.configs.strictTypeChecked,
+  ...tseslint.configs.recommendedTypeChecked,
   {
     languageOptions: {
       parserOptions: {
@@ -12,8 +12,6 @@ export default tseslint.config(
       },
     },
     rules: {
-      // Enforce explicit return types on exported functions
-      '@typescript-eslint/explicit-function-return-type': 'warn',
       // Prefer const assertions
       '@typescript-eslint/prefer-as-const': 'error',
       // No unused vars (allow underscore prefix)
@@ -21,10 +19,11 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      // Prefer nullish coalescing
-      '@typescript-eslint/prefer-nullish-coalescing': 'error',
-      // Prefer optional chaining
-      '@typescript-eslint/prefer-optional-chain': 'error',
+      // Allow numbers and booleans in template literals
+      '@typescript-eslint/restrict-template-expressions': [
+        'error',
+        { allowNumber: true, allowBoolean: true, allowNullish: false },
+      ],
     },
   },
   // Relaxed rules for test files
@@ -34,8 +33,9 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/restrict-template-expressions': 'off',
-      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
   {

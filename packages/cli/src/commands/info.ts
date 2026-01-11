@@ -19,8 +19,6 @@ import chalk from 'chalk';
 import {
   VERSION,
   DEFAULT_CONFIG,
-  getOllamaStatus,
-  getOllamaHealthReport,
   checkLlmAvailabilityForOperation,
   formatOfflineStatus,
 } from '@tidy/core';
