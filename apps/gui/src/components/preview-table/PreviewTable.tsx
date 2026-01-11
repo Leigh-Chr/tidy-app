@@ -220,8 +220,8 @@ export function PreviewTable({
               );
             }
 
-            // Get AI suggestion for this file
-            const aiSuggestion = aiSuggestions?.get(item.proposal.originalPath);
+            // Get AI suggestion for this file (from map or from proposal itself)
+            const aiSuggestion = item.proposal.aiSuggestion ?? aiSuggestions?.get(item.proposal.originalPath);
             const isRowExpanded = expandedRows.has(item.proposal.id);
 
             return (

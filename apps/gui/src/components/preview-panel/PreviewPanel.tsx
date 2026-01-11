@@ -16,6 +16,7 @@ import { ActionBar } from "@/components/action-bar/ActionBar";
 import { ConfirmRename } from "@/components/confirm-rename/ConfirmRename";
 import { RenameProgress } from "@/components/rename-progress/RenameProgress";
 import { TemplateSelector } from "@/components/template-selector/TemplateSelector";
+import { FolderStructureSelector } from "@/components/folder-structure-selector";
 import { AiAnalysisBar } from "@/components/ai-analysis";
 
 export function PreviewPanel() {
@@ -37,6 +38,8 @@ export function PreviewPanel() {
     aiSuggestions,
     getFilteredFiles,
     scanOptions,
+    selectedFolderStructureId,
+    setSelectedFolderStructure,
   } = useAppStore();
 
   // Local state
@@ -102,6 +105,23 @@ export function PreviewPanel() {
       }
     },
     [config, generatePreview, getFilteredFiles]
+  );
+
+  // Handle folder structure change
+  const handleFolderStructureChange = useCallback(
+    (structureId: string | null) => {
+      setSelectedFolderStructure(structureId);
+
+      // Regenerate preview with new folder structure
+      const filteredFiles = getFilteredFiles();
+      if (filteredFiles.length > 0 && config && selectedTemplateId) {
+        const template = config.templates.find((t) => t.id === selectedTemplateId);
+        if (template) {
+          generatePreview(filteredFiles, template.pattern);
+        }
+      }
+    },
+    [config, selectedTemplateId, generatePreview, getFilteredFiles, setSelectedFolderStructure]
   );
 
   // Toggle collapsed state for a status group
@@ -190,14 +210,26 @@ export function PreviewPanel() {
 
   return (
     <div className="flex flex-col gap-4" data-testid="preview-panel">
-      {/* Template Selector */}
-      {config && config.templates.length > 0 && (
-        <TemplateSelector
-          templates={config.templates}
-          selectedId={selectedTemplateId}
-          onSelect={handleTemplateChange}
-          disabled={isApplying}
-        />
+      {/* Template and Folder Structure Selectors */}
+      {config && (
+        <div className="flex flex-wrap items-center gap-4">
+          {config.templates.length > 0 && (
+            <TemplateSelector
+              templates={config.templates}
+              selectedId={selectedTemplateId}
+              onSelect={handleTemplateChange}
+              disabled={isApplying}
+            />
+          )}
+          {config.folderStructures && config.folderStructures.length > 0 && (
+            <FolderStructureSelector
+              structures={config.folderStructures}
+              selectedId={selectedFolderStructureId}
+              onSelect={handleFolderStructureChange}
+              disabled={isApplying}
+            />
+          )}
+        </div>
       )}
 
       {/* AI Analysis Bar */}

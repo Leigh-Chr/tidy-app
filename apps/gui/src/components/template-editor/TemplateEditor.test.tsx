@@ -26,6 +26,7 @@ const createTemplate = (overrides: Partial<Template> = {}): Template => ({
 const mockConfig: AppConfig = {
   version: 1,
   templates: [],
+  folderStructures: [],
   preferences: {
     defaultOutputFormat: "table",
     colorOutput: true,

@@ -22,6 +22,7 @@ const defaultPreferences: Preferences = {
 const mockConfig: AppConfig = {
   version: 1,
   templates: [],
+  folderStructures: [],
   preferences: defaultPreferences,
   recentFolders: [],
   ollama: {

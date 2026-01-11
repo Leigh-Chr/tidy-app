@@ -69,6 +69,7 @@ const createMockConfig = (): AppConfig => ({
       updatedAt: "2026-01-01T00:00:00Z",
     },
   ],
+  folderStructures: [],
   preferences: {
     defaultOutputFormat: "json",
     colorOutput: true,

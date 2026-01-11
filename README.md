@@ -10,11 +10,12 @@ Tidy App helps you organize, rename, and move files intelligently using metadata
 - **Rich Metadata Extraction** - Extract EXIF from images, properties from PDFs, and metadata from Office documents
 - **Flexible Naming Templates** - Create dynamic filenames using date, metadata, and file placeholders
 - **Rule-Based Organization** - Define rules based on metadata patterns or filename globs to auto-apply templates
-- **Folder Structure Definition** - Organize files into folders based on patterns and rules
+- **Folder Structure Definition** - Organize files into folders based on patterns (by year, month, category, etc.)
+- **AI-Powered Folder Suggestions** - Let the AI analyze file content and suggest optimal folder organization
 - **Preview Before Execute** - Always see what will happen before any files are modified
 - **Conflict Detection** - Automatically detect and handle naming conflicts and duplicates
 - **Operation History & Undo** - Track all operations and undo mistakes with full restoration
-- **Local LLM Integration** - Optional Ollama integration for AI-powered content analysis (works offline)
+- **LLM Integration** - AI-powered content analysis with Ollama (local/offline) or OpenAI (cloud)
 - **Cross-Platform** - Works on Windows, macOS, and Linux
 
 ## Installation
@@ -139,17 +140,34 @@ Configuration is stored in your platform's config directory:
 
 ### LLM Configuration (Optional)
 
-To enable AI-powered file analysis with Ollama:
+To enable AI-powered file analysis and folder suggestions, configure either Ollama (local) or OpenAI (cloud):
+
+**Using Ollama (local, works offline):**
 
 ```yaml
 ollama:
   enabled: true
+  provider: ollama
   baseUrl: http://localhost:11434
   models:
-    inference: mistral
+    inference: llama3.2
     vision: llava
   offlineMode: auto  # auto | enabled | disabled
 ```
+
+**Using OpenAI (cloud):**
+
+```yaml
+ollama:
+  enabled: true
+  provider: openai
+  openai:
+    apiKey: sk-your-api-key
+    model: gpt-4o-mini
+    visionModel: gpt-4o
+```
+
+The AI can suggest both **filenames** and **folder organization** based on content analysis.
 
 ## Development
 

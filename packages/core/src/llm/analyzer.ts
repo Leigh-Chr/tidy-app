@@ -42,13 +42,13 @@ import {
 // =============================================================================
 
 /**
- * System prompt for naming suggestions.
+ * System prompt for naming and folder suggestions.
  */
-const NAMING_SYSTEM_PROMPT = `You are a file naming assistant. Your job is to evaluate existing filenames and suggest improvements ONLY when beneficial.
+const NAMING_SYSTEM_PROMPT = `You are a file naming and organization assistant. Your job is to evaluate existing filenames and suggest improvements ONLY when beneficial. You also suggest appropriate folder organization.
 
 CRITICAL RULE: The original filename often contains valuable information (dates, project codes, version numbers, identifiers). You MUST preserve these elements unless they are clearly wrong.
 
-Guidelines:
+FILENAME Guidelines:
 - Use kebab-case (lowercase with hyphens)
 - Be concise but descriptive (2-5 words)
 - Include relevant dates if found (YYYY-MM-DD format at start)
@@ -57,6 +57,16 @@ Guidelines:
 - For documents: focus on topic/purpose
 - For code: focus on functionality/module name
 - For data: focus on dataset description
+
+FOLDER Guidelines:
+- Suggest a logical folder path based on content type and context
+- Use forward slashes for path separators (e.g., "Projects/2024")
+- Keep folder names short and meaningful (1-3 words each)
+- Consider categories like: Documents, Projects, Archives, Personal, Work, Finances, Photos, etc.
+- Include year/month when content has clear temporal context
+- Include project/client names when identifiable
+- Maximum 3 levels deep (e.g., "Work/Projects/ClientName")
+- Leave suggestedFolder empty if no clear organization is apparent
 
 IMPORTANT - When to keep the original name (set keepOriginal: true):
 - The original name is already descriptive and meaningful
@@ -76,7 +86,7 @@ function createAnalysisPrompt(content: string, fileType?: string, originalName?:
   const fileContext = fileType ? `File type: ${fileType}` : '';
   const nameContext = originalName ? `Current filename: "${originalName}"` : '';
 
-  return `Evaluate whether this file needs renaming and suggest an improved name if beneficial.
+  return `Evaluate whether this file needs renaming and suggest an improved name if beneficial. Also suggest an appropriate folder for organization.
 
 ${nameContext}
 ${fileContext}
@@ -88,8 +98,10 @@ ${content}
 
 Evaluate the current filename against the content. If the original name is already good, set keepOriginal to true and return the original name. Only suggest a different name if it would be a significant improvement.
 
+For folder organization, analyze the content to determine the most logical folder path. Consider the document type, subject matter, dates, and any identifiable projects or categories.
+
 Respond ONLY with valid JSON in this exact format (no other text):
-{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation", "keywords": ["keyword1", "keyword2"], "keepOriginal": false}`;
+{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation", "keywords": ["keyword1", "keyword2"], "keepOriginal": false, "suggestedFolder": "Category/Subcategory", "folderConfidence": 0.75}`;
 }
 
 // =============================================================================

@@ -214,12 +214,38 @@ export interface OpenAiModel {
   supportsVision: boolean;
 }
 
+// =============================================================================
+// Folder Structure Types
+// =============================================================================
+
+/** A folder structure definition for organizing files into directories */
+export interface FolderStructure {
+  /** Unique identifier (UUID) */
+  id: string;
+  /** Human-readable name */
+  name: string;
+  /** Folder pattern using placeholders (e.g., "{year}/{month}") */
+  pattern: string;
+  /** Optional description */
+  description?: string;
+  /** Whether this structure is active */
+  enabled: boolean;
+  /** Priority for ordering (lower = higher priority) */
+  priority: number;
+  /** Creation timestamp (ISO datetime) */
+  createdAt: string;
+  /** Last update timestamp (ISO datetime) */
+  updatedAt: string;
+}
+
 /** Complete application configuration */
 export interface AppConfig {
   /** Config schema version */
   version: 1;
   /** Saved templates */
   templates: Template[];
+  /** Folder structures for file organization */
+  folderStructures: FolderStructure[];
   /** User preferences */
   preferences: Preferences;
   /** Recently accessed folders */
@@ -387,6 +413,12 @@ export interface RenameProposal {
   issues: RenameIssue[];
   /** Metadata source badges (e.g., "EXIF", "PDF", "filename") */
   metadataSources?: string[];
+  /** Whether this proposal involves moving to a different folder */
+  isFolderMove?: boolean;
+  /** The destination folder path (if isFolderMove is true) */
+  destinationFolder?: string;
+  /** AI-generated suggestion for this file (if LLM analysis was performed) */
+  aiSuggestion?: AiSuggestion;
 }
 
 /** Summary statistics for a rename preview */
@@ -415,6 +447,10 @@ export interface RenamePreview {
 export interface GeneratePreviewOptions {
   /** Custom date format (default: YYYY-MM-DD) */
   dateFormat?: string;
+  /** Folder structure pattern for organizing files (e.g., "{year}/{month}") */
+  folderPattern?: string;
+  /** Base directory for folder organization (destination root) */
+  baseDirectory?: string;
 }
 
 /** Outcome of a single file rename */
@@ -696,6 +732,10 @@ export interface AiSuggestion {
   reasoning: string;
   /** Keywords extracted from the content */
   keywords: string[];
+  /** Suggested folder path for organization (e.g., "Projects/2024") */
+  suggestedFolder?: string;
+  /** Confidence for folder suggestion (0.0 - 1.0) */
+  folderConfidence?: number;
 }
 
 /** Result of analyzing a single file */
@@ -758,10 +798,12 @@ export interface BatchAnalysisResult {
  */
 export async function analyzeFilesWithLlm(
   filePaths: string[],
-  config: OllamaConfig
+  config: OllamaConfig,
+  basePath?: string
 ): Promise<BatchAnalysisResult> {
   return invoke<BatchAnalysisResult>("analyze_files_with_llm", {
     filePaths,
     config,
+    basePath,
   });
 }
