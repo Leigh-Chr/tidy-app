@@ -243,7 +243,7 @@ export function DropZone({
           <div className="space-y-3">
             <p className="text-muted-foreground">Drop a folder here</p>
             <div className="flex items-center justify-center gap-2">
-              <span className="text-sm text-muted-foreground/75">or</span>
+              <span className="text-sm text-muted-foreground">or</span>
               <Button
                 variant="outline"
                 size="sm"
@@ -253,7 +253,7 @@ export function DropZone({
                 Browse
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground/50 mt-4">
+            <p className="text-xs text-muted-foreground mt-4">
               Your files never leave your computer
             </p>
           </div>

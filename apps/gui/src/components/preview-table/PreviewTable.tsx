@@ -152,8 +152,12 @@ export function PreviewTable({
               return (
                 <div
                   key={`header-${item.status}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={!isCollapsed}
+                  aria-label={`${config.label} group, ${item.count} items. ${isCollapsed ? "Click to expand" : "Click to collapse"}`}
                   className={cn(
-                    "absolute top-0 left-0 w-full flex items-center px-4 py-2 border-y cursor-pointer hover:bg-muted/30 transition-colors",
+                    "absolute top-0 left-0 w-full flex items-center px-4 py-2 border-y cursor-pointer hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                     config.className
                   )}
                   style={{
@@ -161,12 +165,18 @@ export function PreviewTable({
                     transform: `translateY(${virtualItem.start}px)`,
                   }}
                   onClick={() => onToggleGroup?.(item.status)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onToggleGroup?.(item.status);
+                    }
+                  }}
                   data-testid={`preview-group-${item.status}`}
                 >
                   {isCollapsed ? (
-                    <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" aria-hidden="true" />
                   ) : (
-                    <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" aria-hidden="true" />
                   )}
                   <span className="font-medium">{config.label}</span>
                   <span className="ml-2 text-muted-foreground">({item.count})</span>

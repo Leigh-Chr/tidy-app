@@ -41,7 +41,9 @@ export function TemplateSelector({
 
   return (
     <div className={cn("flex items-center gap-2", className)} data-testid="template-selector">
-      <label className="text-sm font-medium text-muted-foreground">Template:</label>
+      <span className="text-sm font-medium text-muted-foreground" aria-hidden="true">
+        Template:
+      </span>
       <Select
         value={selectedId ?? undefined}
         onValueChange={onSelect}
@@ -49,6 +51,7 @@ export function TemplateSelector({
       >
         <SelectTrigger
           className="w-[200px]"
+          aria-label="Template"
           data-testid="template-selector-trigger"
         >
           <SelectValue placeholder="Select template">

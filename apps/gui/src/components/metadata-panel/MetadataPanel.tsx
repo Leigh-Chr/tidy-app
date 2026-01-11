@@ -93,11 +93,8 @@ function SectionHeader({
   title: string;
 }) {
   return (
-    <h4
-      className="flex items-center gap-2 text-sm font-semibold text-foreground mb-2 mt-4 first:mt-0"
-      role="heading"
-    >
-      <Icon className="h-4 w-4 text-muted-foreground" />
+    <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground mb-2 mt-4 first:mt-0">
+      <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
       {title}
     </h4>
   );
