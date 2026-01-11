@@ -768,6 +768,20 @@ export interface BatchAnalysisResult {
   llmAvailable: boolean;
 }
 
+/** Analysis progress event payload */
+export interface AnalysisProgress {
+  /** Current file being processed */
+  currentFile: string;
+  /** Number of files processed so far */
+  processed: number;
+  /** Total number of files */
+  total: number;
+  /** Percentage complete (0-100) */
+  percent: number;
+  /** Current operation phase: starting, analyzing, complete */
+  phase: "starting" | "analyzing" | "complete";
+}
+
 // =============================================================================
 // AI Analysis Functions
 // =============================================================================
@@ -806,4 +820,85 @@ export async function analyzeFilesWithLlm(
     config,
     basePath,
   });
+}
+
+// =============================================================================
+// Cache Management Types
+// =============================================================================
+
+/** Statistics about the analysis cache */
+export interface CacheStats {
+  /** Total number of entries in cache */
+  totalEntries: number;
+  /** Number of valid (non-expired) entries */
+  validEntries: number;
+}
+
+// =============================================================================
+// Cache Management Functions
+// =============================================================================
+
+/**
+ * Clear the AI analysis cache
+ *
+ * Useful for forcing re-analysis of files after configuration changes.
+ *
+ * @returns Promise resolving to number of cleared entries
+ *
+ * @example
+ * ```typescript
+ * const cleared = await clearAnalysisCache();
+ * console.log(`Cleared ${cleared} cached results`);
+ * ```
+ */
+export async function clearAnalysisCache(): Promise<number> {
+  return invoke<number>("clear_analysis_cache");
+}
+
+/**
+ * Get cache statistics
+ *
+ * Returns information about the AI analysis cache.
+ *
+ * @returns Promise resolving to cache statistics
+ *
+ * @example
+ * ```typescript
+ * const stats = await getCacheStats();
+ * console.log(`Cache has ${stats.validEntries} valid entries`);
+ * ```
+ */
+export async function getCacheStats(): Promise<CacheStats> {
+  return invoke<CacheStats>("get_cache_stats");
+}
+
+// =============================================================================
+// Analysis Progress Listener
+// =============================================================================
+
+/**
+ * Listen for analysis progress events
+ *
+ * Returns an unsubscribe function to stop listening.
+ *
+ * @param callback - Function called with progress updates
+ * @returns Promise resolving to unsubscribe function
+ *
+ * @example
+ * ```typescript
+ * const unlisten = await onAnalysisProgress((progress) => {
+ *   console.log(`${progress.percent}% - ${progress.currentFile}`);
+ * });
+ * // Later, to stop listening:
+ * unlisten();
+ * ```
+ */
+export async function onAnalysisProgress(
+  callback: (progress: AnalysisProgress) => void
+): Promise<() => void> {
+  const { listen } = await import("@tauri-apps/api/event");
+  const unlisten = await listen<AnalysisProgress>("analysis-progress", (event) => {
+    callback(event.payload);
+  });
+  return unlisten;
 }

@@ -4,9 +4,9 @@
 mod commands;
 
 use commands::{
-    analyze_files_with_llm, check_ollama_health, check_openai_health, execute_rename,
-    export_results, generate_preview, get_config, get_version, list_ollama_models,
-    list_openai_models, reset_config, save_config, scan_folder,
+    analyze_files_with_llm, check_ollama_health, check_openai_health, clear_analysis_cache,
+    execute_rename, export_results, generate_preview, get_cache_stats, get_config, get_version,
+    list_ollama_models, list_openai_models, reset_config, save_config, scan_folder,
 };
 use tauri::Manager;
 
@@ -50,7 +50,9 @@ pub fn run() {
             list_ollama_models,
             check_openai_health,
             list_openai_models,
-            analyze_files_with_llm
+            analyze_files_with_llm,
+            clear_analysis_cache,
+            get_cache_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

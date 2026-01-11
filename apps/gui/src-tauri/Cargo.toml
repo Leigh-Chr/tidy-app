@@ -33,6 +33,7 @@ regex-lite = "0.1"
 tokio = { version = "1", features = ["sync"] }
 reqwest = { version = "0.12", features = ["json"] }
 base64 = "0.22"
+lazy_static = "1"
 
 [dev-dependencies]
 tempfile = "3"
