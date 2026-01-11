@@ -10,13 +10,13 @@
  * Includes control characters (\x00-\x1F) and reserved characters.
  * Uses \u002F for forward slash to avoid regex parsing issues.
  */
-// eslint-disable-next-line no-control-regex
+ 
 const INVALID_CHARS_REGEX = /[<>:"\u002F\\|?*\u0000-\u001F]/g;
 
 /**
  * Same pattern without global flag for validation (avoids lastIndex issues).
  */
-// eslint-disable-next-line no-control-regex
+ 
 const INVALID_CHARS_TEST = /[<>:"\u002F\\|?*\u0000-\u001F]/;
 
 /**

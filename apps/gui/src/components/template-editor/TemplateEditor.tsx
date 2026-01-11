@@ -60,7 +60,7 @@ export function TemplateEditor({ template, onClose }: TemplateEditorProps) {
       return formData.pattern
         .replace(/{name}/gi, EXAMPLE_FILE.name.replace(/\.[^.]+$/, ""))
         .replace(/{ext}/gi, EXAMPLE_FILE.ext)
-        .replace(/{date:([^}]+)}/gi, (_, format) => {
+        .replace(/{date:([^}]+)}/gi, (_, format: string) => {
           return formatDate(EXAMPLE_FILE.date, format);
         })
         .replace(/{date}/gi, formatDate(EXAMPLE_FILE.date, "YYYY-MM-DD"));

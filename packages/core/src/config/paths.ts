@@ -67,7 +67,7 @@ export function resolveConfigPath(options?: ResolveConfigPathOptions): string {
   }
 
   // Priority 2: Environment variable
-  const envPath = process.env.TIDY_CONFIG;
+  const envPath = process.env["TIDY_CONFIG"];
   if (envPath) {
     return isAbsolute(envPath) ? envPath : resolve(cwd, envPath);
   }

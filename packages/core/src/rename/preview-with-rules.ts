@@ -233,7 +233,7 @@ export function generatePreviewWithRules(
       );
 
       // Get LLM analysis result if available (Story 10.3)
-      let llmResult = enableLlmAnalysis ? llmAnalysisResults?.get(file.path) : undefined;
+      const llmResult = enableLlmAnalysis ? llmAnalysisResults?.get(file.path) : undefined;
       let llmAnalysisFailed = false;
 
       // Report LLM progress and track if analysis was expected but missing (AC5)

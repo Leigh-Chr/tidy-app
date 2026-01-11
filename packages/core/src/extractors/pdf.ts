@@ -110,14 +110,14 @@ function parsePdfInfo(
   }
 
   return {
-    title: asString(info.Title),
-    author: asString(info.Author),
-    subject: asString(info.Subject),
-    keywords: asString(info.Keywords),
-    creator: asString(info.Creator),
-    producer: asString(info.Producer),
-    creationDate: parsePdfDate(info.CreationDate),
-    modificationDate: parsePdfDate(info.ModDate),
+    title: asString(info["Title"]),
+    author: asString(info["Author"]),
+    subject: asString(info["Subject"]),
+    keywords: asString(info["Keywords"]),
+    creator: asString(info["Creator"]),
+    producer: asString(info["Producer"]),
+    creationDate: parsePdfDate(info["CreationDate"]),
+    modificationDate: parsePdfDate(info["ModDate"]),
     pageCount,
   };
 }
