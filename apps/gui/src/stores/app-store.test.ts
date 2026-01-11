@@ -179,6 +179,7 @@ describe("useAppStore", () => {
         updatedAt: "2024-01-01T00:00:00.000Z",
       },
     ],
+    folderStructures: [],
     preferences: {
       defaultOutputFormat: "table" as const,
       colorOutput: true,
@@ -701,7 +702,10 @@ describe("useAppStore", () => {
       expect(mockInvoke).toHaveBeenCalledWith("generate_preview", {
         files: mockFiles,
         templatePattern: "{date}_{name}.{ext}",
-        options: undefined,
+        options: {
+          folderPattern: undefined,
+          baseDirectory: undefined,
+        },
       });
     });
   });

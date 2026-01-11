@@ -107,6 +107,10 @@ export const analysisSuggestionSchema = z.object({
   keywords: z.array(z.string()).optional().default([]),
   /** Whether to keep the original filename (true when original is already good) */
   keepOriginal: z.boolean().optional().default(false),
+  /** Suggested folder path for organization (e.g., "Projects/2024" or "Invoices/Clients") */
+  suggestedFolder: z.string().optional(),
+  /** Confidence for folder suggestion 0-1 (separate from name confidence) */
+  folderConfidence: z.number().min(0).max(1).optional(),
 });
 
 export type AnalysisSuggestion = z.infer<typeof analysisSuggestionSchema>;

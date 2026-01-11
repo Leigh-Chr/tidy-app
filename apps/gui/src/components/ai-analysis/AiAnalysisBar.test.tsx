@@ -31,6 +31,7 @@ const createMockFile = (overrides: Partial<FileInfo> = {}): FileInfo => ({
 const mockConfig: AppConfig = {
   version: 1,
   templates: [],
+  folderStructures: [],
   preferences: {
     defaultOutputFormat: "table",
     colorOutput: true,

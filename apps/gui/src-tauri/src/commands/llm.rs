@@ -329,7 +329,7 @@ pub async fn list_openai_models() -> Result<Vec<OpenAiModel>, String> {
 // LLM Analysis Types
 // =============================================================================
 
-/// AI-suggested name for a file
+/// AI-suggested name and folder for a file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSuggestion {
@@ -344,6 +344,12 @@ pub struct AiSuggestion {
     /// Whether to keep the original filename (true when original is already good)
     #[serde(default)]
     pub keep_original: bool,
+    /// Suggested folder path for organization (e.g., "Projects/2024")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggested_folder: Option<String>,
+    /// Confidence level for folder suggestion (0.0 - 1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_confidence: Option<f32>,
 }
 
 /// Result of analyzing a single file
@@ -437,11 +443,11 @@ struct OllamaGenerateResponse {
 // LLM Analysis Prompts
 // =============================================================================
 
-const NAMING_SYSTEM_PROMPT: &str = r#"You are a file naming assistant. Your job is to evaluate existing filenames and suggest improvements ONLY when beneficial.
+const NAMING_SYSTEM_PROMPT: &str = r#"You are a file naming and organization assistant. Your job is to evaluate existing filenames and suggest improvements ONLY when beneficial, and to suggest appropriate folder organization.
 
 CRITICAL RULE: The original filename often contains valuable information (dates, project codes, version numbers, identifiers). You MUST preserve these elements unless they are clearly wrong.
 
-Guidelines:
+FILENAME Guidelines:
 - Use kebab-case (lowercase with hyphens)
 - Be concise but descriptive (2-5 words)
 - Include relevant dates if found (YYYY-MM-DD format at start)
@@ -450,6 +456,16 @@ Guidelines:
 - For documents: focus on topic/purpose
 - For code: focus on functionality/module name
 - For data: focus on dataset description
+
+FOLDER Guidelines:
+- Suggest a logical folder path based on content type and context
+- Use forward slashes for path separators (e.g., "Projects/2024")
+- Keep folder names short and meaningful (1-3 words each)
+- Consider categories like: Documents, Projects, Archives, Personal, Work, Finances, Photos, etc.
+- Include year/month when content has clear temporal context
+- Include project/client names when identifiable
+- Maximum 3 levels deep (e.g., "Work/Projects/ClientName")
+- Leave suggestedFolder empty or null if no clear organization is apparent
 
 IMPORTANT - When to keep the original name (set keepOriginal: true):
 - The original name is already descriptive and meaningful
@@ -462,12 +478,23 @@ When suggesting a new name:
 - Preserve dates, version numbers, project codes from the original
 - Only change what genuinely improves clarity"#;
 
-fn create_analysis_prompt(content: &str, file_type: &str, original_name: &str) -> String {
+fn create_analysis_prompt(content: &str, file_type: &str, original_name: &str, existing_folders: &[String]) -> String {
+    let folder_context = if existing_folders.is_empty() {
+        "No existing folders found. You may suggest new folder names.".to_string()
+    } else {
+        format!(
+            "Existing folders in this directory:\n{}\n\nPrefer using existing folders when appropriate, or suggest new ones if needed.",
+            existing_folders.iter().map(|f| format!("- {}", f)).collect::<Vec<_>>().join("\n")
+        )
+    };
+
     format!(
-        r#"Evaluate whether this file needs renaming and suggest an improved name if beneficial.
+        r#"Evaluate whether this file needs renaming and suggest an improved name if beneficial. Also suggest an appropriate folder for organization.
 
 Current filename: "{}"
 File type: {}
+
+{}
 
 Content:
 ---
@@ -476,32 +503,53 @@ Content:
 
 Evaluate the current filename against the content. If the original name is already good, set keepOriginal to true and return the original name. Only suggest a different name if it would be a significant improvement.
 
+For folder organization, analyze the content to determine the most logical folder path. Consider the document type, subject matter, dates, and any identifiable projects or categories. When possible, use existing folders that match the content.
+
 Respond ONLY with valid JSON in this exact format (no other text):
-{{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation", "keywords": ["keyword1", "keyword2"], "keepOriginal": false}}"#,
-        original_name, file_type, content
+{{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation", "keywords": ["keyword1", "keyword2"], "keepOriginal": false, "suggestedFolder": "Category/Subcategory", "folderConfidence": 0.75}}"#,
+        original_name, file_type, folder_context, content
     )
 }
 
-fn create_vision_prompt(original_name: &str) -> String {
+fn create_vision_prompt(original_name: &str, existing_folders: &[String]) -> String {
+    let folder_context = if existing_folders.is_empty() {
+        "No existing folders found. You may suggest new folder names.".to_string()
+    } else {
+        format!(
+            "Existing folders in this directory:\n{}\n\nPrefer using existing folders when appropriate, or suggest new ones if needed.",
+            existing_folders.iter().map(|f| format!("- {}", f)).collect::<Vec<_>>().join("\n")
+        )
+    };
+
     format!(
-        r#"Evaluate this image and decide if the current filename needs improvement.
+        r#"Evaluate this image and decide if the current filename needs improvement. Also suggest an appropriate folder for organization.
 
 Current filename: "{}"
 
-Guidelines:
+{}
+
+FILENAME Guidelines:
 - Use kebab-case (lowercase with hyphens)
 - Be concise but descriptive (2-5 words)
 - If you can identify a date, include it at the start (YYYY-MM-DD)
 - Focus on: subject, scene, key objects, mood/style
 - Omit the file extension
 
+FOLDER Guidelines:
+- Suggest a logical folder path based on image content
+- Use forward slashes for path separators (e.g., "Photos/2024")
+- Consider categories like: Photos, Screenshots, Documents, Work, Personal, Travel, Events, etc.
+- Include year/month when identifiable from image
+- Maximum 3 levels deep
+- When possible, use existing folders that match the content
+
 IMPORTANT: If the current filename is already descriptive and meaningful (contains relevant subject, date, or context), set keepOriginal to true. Only suggest a new name if it would be a significant improvement.
 
 Preserve any dates, identifiers, or codes from the original filename if they appear relevant.
 
 Respond ONLY with valid JSON in this exact format (no other text):
-{{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation", "keywords": ["keyword1", "keyword2"], "keepOriginal": false}}"#,
-        original_name
+{{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation", "keywords": ["keyword1", "keyword2"], "keepOriginal": false, "suggestedFolder": "Photos/Category", "folderConfidence": 0.75}}"#,
+        original_name, folder_context
     )
 }
 
@@ -614,6 +662,48 @@ fn get_image_mime_type(path: &str) -> &'static str {
 
 use super::config::{OllamaConfig, LlmProvider};
 
+/// Scan existing folder structure in a directory (max 2 levels deep)
+fn scan_folder_structure(base_path: &str) -> Vec<String> {
+    let mut folders = Vec::new();
+    let base = std::path::Path::new(base_path);
+
+    if !base.is_dir() {
+        return folders;
+    }
+
+    // Scan first level
+    if let Ok(entries) = std::fs::read_dir(base) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    // Skip hidden folders
+                    if !name.starts_with('.') {
+                        folders.push(name.to_string());
+
+                        // Scan second level
+                        if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                            for sub_entry in sub_entries.filter_map(|e| e.ok()) {
+                                let sub_path = sub_entry.path();
+                                if sub_path.is_dir() {
+                                    if let Some(sub_name) = sub_path.file_name().and_then(|n| n.to_str()) {
+                                        if !sub_name.starts_with('.') {
+                                            folders.push(format!("{}/{}", name, sub_name));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    folders.sort();
+    folders
+}
+
 /// Analyze files with LLM to get naming suggestions
 ///
 /// Command name: analyze_files_with_llm (snake_case per architecture)
@@ -621,12 +711,19 @@ use super::config::{OllamaConfig, LlmProvider};
 pub async fn analyze_files_with_llm(
     file_paths: Vec<String>,
     config: OllamaConfig,
+    base_path: Option<String>,
 ) -> Result<BatchAnalysisResult, String> {
     let total = file_paths.len();
     let mut results: Vec<FileAnalysisResult> = Vec::new();
     let mut analyzed = 0;
     let mut failed = 0;
     let mut skipped = 0;
+
+    // Scan existing folder structure for context
+    let existing_folders = base_path
+        .as_ref()
+        .map(|p| scan_folder_structure(p))
+        .unwrap_or_default();
 
     // Check if LLM is enabled
     if !config.enabled {
@@ -658,7 +755,7 @@ pub async fn analyze_files_with_llm(
 
     // Process each file
     for file_path in file_paths {
-        let result = analyze_single_file(&client, &file_path, &config).await;
+        let result = analyze_single_file(&client, &file_path, &config, &existing_folders).await;
 
         match &result.suggestion {
             Some(_) => analyzed += 1,
@@ -684,10 +781,11 @@ async fn analyze_single_file(
     client: &Client,
     file_path: &str,
     config: &OllamaConfig,
+    existing_folders: &[String],
 ) -> FileAnalysisResult {
     // Check if it's an image and vision is enabled
     if is_image_file(file_path) && config.vision_enabled {
-        return analyze_image_file(client, file_path, config).await;
+        return analyze_image_file(client, file_path, config, existing_folders).await;
     }
 
     // Check if it's a text file we can analyze
@@ -733,8 +831,8 @@ async fn analyze_single_file(
 
     // Call appropriate provider
     match config.provider {
-        LlmProvider::Openai => analyze_with_openai(client, &content, ext, file_path, config).await,
-        LlmProvider::Ollama => analyze_with_ollama(client, &content, ext, file_path, config).await,
+        LlmProvider::Openai => analyze_with_openai(client, &content, ext, file_path, config, existing_folders).await,
+        LlmProvider::Ollama => analyze_with_ollama(client, &content, ext, file_path, config, existing_folders).await,
     }
 }
 
@@ -743,6 +841,7 @@ async fn analyze_image_file(
     client: &Client,
     file_path: &str,
     config: &OllamaConfig,
+    existing_folders: &[String],
 ) -> FileAnalysisResult {
     // Encode image
     let base64_image = match encode_image_base64(file_path) {
@@ -761,8 +860,8 @@ async fn analyze_image_file(
     let mime_type = get_image_mime_type(file_path);
 
     match config.provider {
-        LlmProvider::Openai => analyze_image_with_openai(client, &base64_image, mime_type, file_path, config).await,
-        LlmProvider::Ollama => analyze_image_with_ollama(client, &base64_image, file_path, config).await,
+        LlmProvider::Openai => analyze_image_with_openai(client, &base64_image, mime_type, file_path, config, existing_folders).await,
+        LlmProvider::Ollama => analyze_image_with_ollama(client, &base64_image, file_path, config, existing_folders).await,
     }
 }
 
@@ -773,6 +872,7 @@ async fn analyze_with_openai(
     file_type: &str,
     file_path: &str,
     config: &OllamaConfig,
+    existing_folders: &[String],
 ) -> FileAnalysisResult {
     let api_key = &config.openai.api_key;
     if api_key.is_empty() {
@@ -792,7 +892,7 @@ async fn analyze_with_openai(
         .unwrap_or("unknown");
 
     let url = format!("{}/chat/completions", config.openai.base_url.trim_end_matches('/'));
-    let prompt = create_analysis_prompt(content, file_type, original_name);
+    let prompt = create_analysis_prompt(content, file_type, original_name, existing_folders);
 
     let request = OpenAiChatRequest {
         model: config.openai.model.clone(),
@@ -885,6 +985,7 @@ async fn analyze_with_ollama(
     file_type: &str,
     file_path: &str,
     config: &OllamaConfig,
+    existing_folders: &[String],
 ) -> FileAnalysisResult {
     let model = match &config.models.inference {
         Some(m) => m.clone(),
@@ -906,7 +1007,7 @@ async fn analyze_with_ollama(
         .unwrap_or("unknown");
 
     let url = format!("{}/api/generate", config.base_url.trim_end_matches('/'));
-    let prompt = create_analysis_prompt(content, file_type, original_name);
+    let prompt = create_analysis_prompt(content, file_type, original_name, existing_folders);
 
     let request = OllamaGenerateRequest {
         model,
@@ -983,6 +1084,7 @@ async fn analyze_image_with_openai(
     mime_type: &str,
     file_path: &str,
     config: &OllamaConfig,
+    existing_folders: &[String],
 ) -> FileAnalysisResult {
     let api_key = &config.openai.api_key;
     if api_key.is_empty() {
@@ -1002,7 +1104,7 @@ async fn analyze_image_with_openai(
         .unwrap_or("unknown");
 
     let url = format!("{}/chat/completions", config.openai.base_url.trim_end_matches('/'));
-    let prompt = create_vision_prompt(original_name);
+    let prompt = create_vision_prompt(original_name, existing_folders);
 
     // Create multimodal content
     let content = serde_json::json!([
@@ -1110,6 +1212,7 @@ async fn analyze_image_with_ollama(
     base64_image: &str,
     file_path: &str,
     config: &OllamaConfig,
+    existing_folders: &[String],
 ) -> FileAnalysisResult {
     let model = match &config.models.vision {
         Some(m) => m.clone(),
@@ -1131,7 +1234,7 @@ async fn analyze_image_with_ollama(
         .unwrap_or("unknown");
 
     let url = format!("{}/api/generate", config.base_url.trim_end_matches('/'));
-    let prompt = create_vision_prompt(original_name);
+    let prompt = create_vision_prompt(original_name, existing_folders);
 
     // Ollama vision request format
     let request = serde_json::json!({
@@ -1273,11 +1376,14 @@ Hope this helps!"#;
             reasoning: "Based on content".to_string(),
             keywords: vec!["key1".to_string(), "key2".to_string()],
             keep_original: false,
+            suggested_folder: Some("Projects/2024".to_string()),
+            folder_confidence: Some(0.75),
         };
 
         let json = serde_json::to_string(&suggestion).unwrap();
         assert!(json.contains("\"suggestedName\":\"my-file\""));
         assert!(json.contains("\"confidence\":0.85"));
+        assert!(json.contains("\"suggestedFolder\":\"Projects/2024\""));
     }
 
     #[test]
@@ -1290,6 +1396,8 @@ Hope this helps!"#;
                 reasoning: "Test".to_string(),
                 keywords: vec![],
                 keep_original: false,
+                suggested_folder: None,
+                folder_confidence: None,
             }),
             error: None,
             skipped: false,

@@ -87,6 +87,12 @@ pub struct RenameProposal {
     /// Metadata source badges (e.g., "EXIF", "PDF", "filename")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata_sources: Option<Vec<String>>,
+    /// Whether this proposal involves moving to a different folder
+    #[serde(default)]
+    pub is_folder_move: bool,
+    /// The destination folder path (if is_folder_move is true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_folder: Option<String>,
 }
 
 /// Summary statistics for a rename preview
@@ -173,6 +179,12 @@ pub struct GeneratePreviewOptions {
     /// Custom date format (default: YYYY-MM-DD)
     #[serde(default)]
     pub date_format: Option<String>,
+    /// Folder structure pattern for organizing files (e.g., "{year}/{month}")
+    #[serde(default)]
+    pub folder_pattern: Option<String>,
+    /// Base directory for folder organization (destination root)
+    #[serde(default)]
+    pub base_directory: Option<String>,
 }
 
 /// Options for executing renames
@@ -303,6 +315,44 @@ fn format_date(date: &DateTime<Utc>, format: &str) -> String {
     date.format(&chrono_format).to_string()
 }
 
+/// Apply a folder pattern to generate a destination folder path
+fn apply_folder_pattern(file: &FileInfo, pattern: &str) -> String {
+    let mut result = pattern.to_string();
+
+    // Replace {year}, {month}, {day}
+    result = result.replace("{year}", &file.modified_at.format("%Y").to_string());
+    result = result.replace("{month}", &file.modified_at.format("%m").to_string());
+    result = result.replace("{day}", &file.modified_at.format("%d").to_string());
+
+    // Replace {category} with file category
+    let category_str = match file.category {
+        super::scanner::FileCategory::Image => "Images",
+        super::scanner::FileCategory::Document => "Documents",
+        super::scanner::FileCategory::Video => "Videos",
+        super::scanner::FileCategory::Audio => "Audio",
+        super::scanner::FileCategory::Archive => "Archives",
+        super::scanner::FileCategory::Code => "Code",
+        super::scanner::FileCategory::Data => "Data",
+        super::scanner::FileCategory::Other => "Other",
+    };
+    result = result.replace("{category}", category_str);
+
+    // Replace {extension} or {ext}
+    result = result.replace("{extension}", &file.extension);
+    result = result.replace("{ext}", &file.extension);
+
+    // Normalize path separators
+    result = result.replace('\\', "/");
+
+    // Remove leading/trailing slashes and collapse multiple slashes
+    result = result.trim_matches('/').to_string();
+    while result.contains("//") {
+        result = result.replace("//", "/");
+    }
+
+    result
+}
+
 // =============================================================================
 // Preview Generation
 // =============================================================================
@@ -318,6 +368,8 @@ pub async fn generate_preview(
 ) -> Result<RenamePreview, RenameError> {
     let options = options.unwrap_or_default();
     let date_format = options.date_format.as_deref().unwrap_or("YYYY-MM-DD");
+    let folder_pattern = options.folder_pattern.as_deref();
+    let base_directory = options.base_directory.as_deref();
 
     let mut proposals: Vec<RenameProposal> = Vec::new();
     let mut proposed_paths: HashMap<String, Vec<String>> = HashMap::new();
@@ -327,22 +379,56 @@ pub async fn generate_preview(
         let id = Uuid::new_v4().to_string();
         let (proposed_name, metadata_sources) = apply_template(file, &template_pattern, date_format);
 
-        let dir = Path::new(&file.path)
-            .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
+        // Determine destination directory
+        let (dest_dir, is_folder_move, destination_folder) = if let Some(pattern) = folder_pattern {
+            // Apply folder pattern
+            let folder_path = apply_folder_pattern(file, pattern);
 
-        let proposed_path = if dir.is_empty() {
+            // Combine with base directory if provided
+            let full_dest = match base_directory {
+                Some(base) => format!("{}/{}", base.trim_end_matches('/'), folder_path),
+                None => {
+                    // Use source directory as base
+                    let source_dir = Path::new(&file.path)
+                        .parent()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    if source_dir.is_empty() {
+                        folder_path.clone()
+                    } else {
+                        format!("{}/{}", source_dir.trim_end_matches('/'), folder_path)
+                    }
+                }
+            };
+
+            // Check if this is actually a move (different from source directory)
+            let source_dir = Path::new(&file.path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            let is_move = full_dest != source_dir;
+            (full_dest.clone(), is_move, if is_move { Some(folder_path) } else { None })
+        } else {
+            // No folder pattern - use original directory
+            let dir = Path::new(&file.path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            (dir, false, None)
+        };
+
+        let proposed_path = if dest_dir.is_empty() {
             proposed_name.clone()
         } else {
-            format!("{}/{}", dir, proposed_name)
+            format!("{}/{}", dest_dir, proposed_name)
         };
 
         let mut issues: Vec<RenameIssue> = Vec::new();
         let mut status = RenameStatus::Ready;
 
-        // Check for no change
-        if proposed_name == file.full_name {
+        // Check for no change (both name and location)
+        if proposed_name == file.full_name && !is_folder_move {
             status = RenameStatus::NoChange;
         }
 
@@ -376,6 +462,8 @@ pub async fn generate_preview(
             } else {
                 Some(metadata_sources)
             },
+            is_folder_move,
+            destination_folder,
         });
     }
 
@@ -487,8 +575,8 @@ pub async fn execute_rename(
             continue;
         }
 
-        // Skip if no change needed
-        if proposal.original_name == proposal.proposed_name {
+        // Skip if no change needed (and not a folder move)
+        if proposal.original_name == proposal.proposed_name && !proposal.is_folder_move {
             results.push(FileRenameResult {
                 proposal_id: proposal.id.clone(),
                 original_path: proposal.original_path.clone(),
@@ -501,7 +589,27 @@ pub async fn execute_rename(
             continue;
         }
 
-        // Attempt the rename
+        // Create destination directory if it's a folder move
+        if proposal.is_folder_move {
+            if let Some(parent) = Path::new(&proposal.proposed_path).parent() {
+                if !parent.exists() {
+                    if let Err(e) = fs::create_dir_all(parent) {
+                        results.push(FileRenameResult {
+                            proposal_id: proposal.id.clone(),
+                            original_path: proposal.original_path.clone(),
+                            original_name: proposal.original_name.clone(),
+                            new_path: None,
+                            new_name: None,
+                            outcome: RenameOutcome::Failed,
+                            error: Some(format!("Failed to create directory: {}", e)),
+                        });
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Attempt the rename/move
         match fs::rename(&proposal.original_path, &proposal.proposed_path) {
             Ok(_) => {
                 results.push(FileRenameResult {
@@ -684,6 +792,8 @@ mod tests {
             status: RenameStatus::Ready,
             issues: vec![],
             metadata_sources: None,
+            is_folder_move: false,
+            destination_folder: None,
         };
 
         let result = execute_rename(vec![proposal], None).await.unwrap();
@@ -705,6 +815,8 @@ mod tests {
             status: RenameStatus::Conflict,
             issues: vec![],
             metadata_sources: None,
+            is_folder_move: false,
+            destination_folder: None,
         };
 
         let result = execute_rename(vec![proposal], None).await.unwrap();
@@ -734,6 +846,8 @@ mod tests {
                 status: RenameStatus::Ready,
                 issues: vec![],
                 metadata_sources: None,
+                is_folder_move: false,
+                destination_folder: None,
             },
             RenameProposal {
                 id: "id-2".to_string(),
@@ -744,6 +858,8 @@ mod tests {
                 status: RenameStatus::Ready,
                 issues: vec![],
                 metadata_sources: None,
+                is_folder_move: false,
+                destination_folder: None,
             },
         ];
 

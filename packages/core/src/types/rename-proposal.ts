@@ -74,7 +74,7 @@ export type TemplateSource = z.infer<typeof templateSourceSchema>;
 // =============================================================================
 
 /**
- * LLM-generated naming suggestion for a file.
+ * LLM-generated naming and folder suggestion for a file.
  */
 export const llmSuggestionSchema = z.object({
   /** Suggested filename (without extension) - must be non-empty */
@@ -85,6 +85,10 @@ export const llmSuggestionSchema = z.object({
   reasoning: z.string(),
   /** Extracted keywords from content */
   keywords: z.array(z.string()).optional(),
+  /** Suggested folder path for organization (e.g., "Projects/2024") */
+  suggestedFolder: z.string().optional(),
+  /** Confidence for folder suggestion 0-1 */
+  folderConfidence: z.number().min(0).max(1).optional(),
 });
 
 export type LlmSuggestion = z.infer<typeof llmSuggestionSchema>;

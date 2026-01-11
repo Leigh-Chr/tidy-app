@@ -14,6 +14,7 @@ import {
   Ban,
   ChevronDown,
   ChevronRight,
+  FolderOutput,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -113,7 +114,8 @@ export function PreviewRow({
   const diffSegments = computeDiff(proposal.originalName, proposal.proposedName);
   const hasIssues = proposal.issues.length > 0;
   const canSelect = proposal.status === "ready";
-  const hasExpandableContent = hasIssues || proposal.metadataSources?.length || aiSuggestion;
+  const isFolderMove = proposal.isFolderMove === true;
+  const hasExpandableContent = hasIssues || proposal.metadataSources?.length || aiSuggestion || isFolderMove;
 
   return (
     <div
@@ -170,6 +172,11 @@ export function PreviewRow({
         {/* Status + Expand */}
         <div className="w-24 flex items-center justify-center gap-1">
           <StatusIcon className={cn("h-4 w-4", statusConfig.className)} />
+          {isFolderMove && proposal.destinationFolder && (
+            <Badge variant="outline" className="text-[10px] px-1 py-0 bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700" title={`Moving to: ${proposal.destinationFolder}`}>
+              <FolderOutput className="h-3 w-3" />
+            </Badge>
+          )}
           {aiSuggestion && (
             <Badge variant="outline" className="text-[10px] px-1 py-0 bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700">
               AI
@@ -212,6 +219,19 @@ export function PreviewRow({
               <div className="font-mono text-sm text-purple-900 dark:text-purple-100">
                 {aiSuggestion.suggestedName}
               </div>
+              {aiSuggestion.suggestedFolder && (
+                <div className="flex items-center gap-2 mt-1">
+                  <FolderOutput className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                  <span className="font-mono text-sm text-purple-900 dark:text-purple-100">
+                    {aiSuggestion.suggestedFolder}
+                  </span>
+                  {aiSuggestion.folderConfidence !== undefined && (
+                    <Badge variant="outline" className="text-[10px] px-1 py-0">
+                      {Math.round(aiSuggestion.folderConfidence * 100)}% folder confidence
+                    </Badge>
+                  )}
+                </div>
+              )}
               {aiSuggestion.reasoning && (
                 <div className="text-xs text-purple-600 dark:text-purple-400 mt-1">
                   {aiSuggestion.reasoning}
@@ -229,6 +249,19 @@ export function PreviewRow({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Destination Folder (for folder moves) */}
+          {isFolderMove && proposal.destinationFolder && (
+            <div className="bg-blue-50 dark:bg-blue-950 p-2 rounded border border-blue-200 dark:border-blue-800" data-testid={`folder-move-${proposal.id}`}>
+              <div className="flex items-center gap-2">
+                <FolderOutput className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Moving to folder:</span>
+              </div>
+              <div className="font-mono text-sm text-blue-900 dark:text-blue-100 mt-1">
+                {proposal.destinationFolder}
+              </div>
             </div>
           )}
 

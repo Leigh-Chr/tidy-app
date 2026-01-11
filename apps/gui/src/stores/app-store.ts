@@ -15,6 +15,7 @@ import type {
   BatchAnalysisResult,
   BatchRenameResult,
   FileInfo,
+  FolderStructure,
   HealthStatus,
   LlmProvider,
   OllamaConfig,
@@ -48,7 +49,7 @@ export type LlmStatus = "idle" | "checking" | "available" | "unavailable";
 export type AiAnalysisStatus = "idle" | "analyzing" | "done" | "error";
 
 // Re-export types for consumers that import from the store
-export type { VersionInfo, AppConfig, Template, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult };
+export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult };
 
 export type Result<T, E = Error> =
   | { ok: true; data: T }
@@ -88,6 +89,9 @@ export interface AppState {
   previewError: string | null;
   selectedProposalIds: Set<string>;
   lastRenameResult: BatchRenameResult | null;
+
+  // Folder Structure State
+  selectedFolderStructureId: string | null;
 
   // LLM State
   llmStatus: LlmStatus;
@@ -131,6 +135,13 @@ export interface AppState {
   applyRenames: (proposalIds?: string[]) => Promise<Result<BatchRenameResult>>;
   clearPreview: () => void;
 
+  // Folder Structure Actions
+  setSelectedFolderStructure: (structureId: string | null) => void;
+  addFolderStructure: (structure: Omit<FolderStructure, "id" | "createdAt" | "updatedAt">) => Promise<Result<FolderStructure>>;
+  updateFolderStructure: (structureId: string, updates: Partial<FolderStructure>) => Promise<Result<void>>;
+  deleteFolderStructure: (structureId: string) => Promise<Result<void>>;
+  getSelectedFolderStructure: () => FolderStructure | null;
+
   // LLM Actions
   checkLlmHealth: () => Promise<Result<HealthStatus>>;
   loadLlmModels: () => Promise<Result<OllamaModel[]>>;
@@ -169,6 +180,8 @@ const initialState = {
   previewError: null as string | null,
   selectedProposalIds: new Set<string>(),
   lastRenameResult: null as BatchRenameResult | null,
+  // Folder Structure State
+  selectedFolderStructureId: null as string | null,
   // LLM State
   llmStatus: "idle" as LlmStatus,
   llmModels: [] as OllamaModel[],
@@ -477,10 +490,26 @@ export const useAppStore = create<AppState>((set) => ({
       selectedProposalIds: new Set<string>(),
     });
     try {
+      // Get selected folder structure pattern if any
+      const { config, selectedFolderStructureId, selectedFolder } = useAppStore.getState();
+      let folderPattern: string | undefined;
+
+      if (selectedFolderStructureId && config) {
+        const structure = config.folderStructures.find(
+          (s) => s.id === selectedFolderStructureId && s.enabled
+        );
+        if (structure) {
+          folderPattern = structure.pattern;
+        }
+      }
+
       const preview = await invoke<RenamePreview>("generate_preview", {
         files,
         templatePattern,
-        options: undefined,
+        options: {
+          folderPattern,
+          baseDirectory: selectedFolder ?? undefined,
+        },
       });
 
       // Apply AI suggestions to proposals if available
@@ -494,15 +523,35 @@ export const useAppStore = create<AppState>((set) => ({
               ? "." + proposal.originalName.split(".").pop()
               : "";
             const newName = suggestion.suggestedName + ext;
-            const dir = proposal.originalPath.substring(
+
+            // Determine the base directory for the file
+            const originalDir = proposal.originalPath.substring(
               0,
               proposal.originalPath.lastIndexOf("/") + 1
             );
+
+            // Check if AI suggested a folder
+            let targetDir = originalDir;
+            let isFolderMove = proposal.isFolderMove ?? false;
+            let destinationFolder = proposal.destinationFolder;
+
+            if (suggestion.suggestedFolder) {
+              // Use the base directory (selected folder) as root for AI folder suggestion
+              const baseDir = selectedFolder ? selectedFolder + "/" : originalDir;
+              targetDir = baseDir + suggestion.suggestedFolder + "/";
+              // Normalize path (remove double slashes)
+              targetDir = targetDir.replace(/\/+/g, "/");
+              isFolderMove = true;
+              destinationFolder = suggestion.suggestedFolder;
+            }
+
             return {
               ...proposal,
               proposedName: newName,
-              proposedPath: dir + newName,
-              // Don't add "AI" to metadataSources - it's shown separately via aiSuggestions
+              proposedPath: targetDir + newName,
+              isFolderMove,
+              destinationFolder,
+              aiSuggestion: suggestion,
             };
           }
           return proposal;
@@ -606,6 +655,118 @@ export const useAppStore = create<AppState>((set) => ({
       selectedProposalIds: new Set<string>(),
       lastRenameResult: null,
     });
+  },
+
+  // ==========================================================================
+  // Folder Structure Actions
+  // ==========================================================================
+
+  setSelectedFolderStructure: (structureId: string | null) => {
+    set({ selectedFolderStructureId: structureId });
+  },
+
+  addFolderStructure: async (
+    structure: Omit<FolderStructure, "id" | "createdAt" | "updatedAt">
+  ): Promise<Result<FolderStructure>> => {
+    const currentConfig = useAppStore.getState().config;
+    if (!currentConfig) {
+      const error = new Error("Config not loaded");
+      set({ configError: error.message, configStatus: "error" });
+      return { ok: false, error };
+    }
+
+    const now = new Date().toISOString();
+    const newStructure: FolderStructure = {
+      ...structure,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const updatedConfig: AppConfig = {
+      ...currentConfig,
+      folderStructures: [...currentConfig.folderStructures, newStructure],
+    };
+
+    const result = await useAppStore.getState().saveConfig(updatedConfig);
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+
+    return { ok: true, data: newStructure };
+  },
+
+  updateFolderStructure: async (
+    structureId: string,
+    updates: Partial<FolderStructure>
+  ): Promise<Result<void>> => {
+    const currentConfig = useAppStore.getState().config;
+    if (!currentConfig) {
+      const error = new Error("Config not loaded");
+      set({ configError: error.message, configStatus: "error" });
+      return { ok: false, error };
+    }
+
+    const structureIndex = currentConfig.folderStructures.findIndex(
+      (s) => s.id === structureId
+    );
+    if (structureIndex === -1) {
+      const error = new Error(`Folder structure not found: ${structureId}`);
+      set({ configError: error.message, configStatus: "error" });
+      return { ok: false, error };
+    }
+
+    const updatedStructures = [...currentConfig.folderStructures];
+    updatedStructures[structureIndex] = {
+      ...updatedStructures[structureIndex],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updatedConfig: AppConfig = {
+      ...currentConfig,
+      folderStructures: updatedStructures,
+    };
+
+    return useAppStore.getState().saveConfig(updatedConfig);
+  },
+
+  deleteFolderStructure: async (structureId: string): Promise<Result<void>> => {
+    const currentConfig = useAppStore.getState().config;
+    if (!currentConfig) {
+      const error = new Error("Config not loaded");
+      set({ configError: error.message, configStatus: "error" });
+      return { ok: false, error };
+    }
+
+    const updatedStructures = currentConfig.folderStructures.filter(
+      (s) => s.id !== structureId
+    );
+
+    if (updatedStructures.length === currentConfig.folderStructures.length) {
+      const error = new Error(`Folder structure not found: ${structureId}`);
+      set({ configError: error.message, configStatus: "error" });
+      return { ok: false, error };
+    }
+
+    // Clear selection if deleting the selected structure
+    const { selectedFolderStructureId } = useAppStore.getState();
+    if (selectedFolderStructureId === structureId) {
+      set({ selectedFolderStructureId: null });
+    }
+
+    const updatedConfig: AppConfig = {
+      ...currentConfig,
+      folderStructures: updatedStructures,
+    };
+
+    return useAppStore.getState().saveConfig(updatedConfig);
+  },
+
+  getSelectedFolderStructure: (): FolderStructure | null => {
+    const { config, selectedFolderStructureId } = useAppStore.getState();
+    if (!config || !selectedFolderStructureId) return null;
+    return config.folderStructures.find((s) => s.id === selectedFolderStructureId) ?? null;
   },
 
   // ==========================================================================
@@ -730,8 +891,9 @@ export const useAppStore = create<AppState>((set) => ({
     set({ aiAnalysisStatus: "analyzing", aiAnalysisError: null });
 
     try {
+      const { selectedFolder } = useAppStore.getState();
       const filePaths = files.map((f) => f.path);
-      const result = await analyzeFilesWithLlm(filePaths, config.ollama);
+      const result = await analyzeFilesWithLlm(filePaths, config.ollama, selectedFolder ?? undefined);
 
       // Build suggestions map from results
       const suggestions = new Map<string, AiSuggestion>();

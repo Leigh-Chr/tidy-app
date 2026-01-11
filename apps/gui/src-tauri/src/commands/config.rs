@@ -302,6 +302,35 @@ impl Default for OllamaConfig {
     }
 }
 
+// =============================================================================
+// Folder Structure Types (File Organization)
+// =============================================================================
+
+/// A folder structure definition for organizing files into directories
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderStructure {
+    /// Unique identifier (UUID)
+    pub id: String,
+    /// Human-readable name
+    pub name: String,
+    /// Folder pattern using placeholders (e.g., "{year}/{month}")
+    pub pattern: String,
+    /// Optional description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Whether this structure is active
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Priority for ordering (lower = higher priority)
+    #[serde(default)]
+    pub priority: u32,
+    /// Creation timestamp (ISO datetime)
+    pub created_at: String,
+    /// Last update timestamp (ISO datetime)
+    pub updated_at: String,
+}
+
 /// Complete application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -311,6 +340,9 @@ pub struct AppConfig {
     /// Saved templates
     #[serde(default)]
     pub templates: Vec<Template>,
+    /// Folder structures for file organization
+    #[serde(default = "default_folder_structures")]
+    pub folder_structures: Vec<FolderStructure>,
     /// User preferences
     #[serde(default)]
     pub preferences: Preferences,
@@ -395,11 +427,58 @@ fn default_templates() -> Vec<Template> {
     ]
 }
 
+/// Generate default folder structures
+fn default_folder_structures() -> Vec<FolderStructure> {
+    vec![
+        FolderStructure {
+            id: Uuid::new_v4().to_string(),
+            name: "By Year".to_string(),
+            pattern: "{year}".to_string(),
+            description: Some("Organize files by year".to_string()),
+            enabled: true,
+            priority: 10,
+            created_at: DEFAULT_TIMESTAMP.to_string(),
+            updated_at: DEFAULT_TIMESTAMP.to_string(),
+        },
+        FolderStructure {
+            id: Uuid::new_v4().to_string(),
+            name: "By Year and Month".to_string(),
+            pattern: "{year}/{month}".to_string(),
+            description: Some("Organize files by year and month".to_string()),
+            enabled: true,
+            priority: 20,
+            created_at: DEFAULT_TIMESTAMP.to_string(),
+            updated_at: DEFAULT_TIMESTAMP.to_string(),
+        },
+        FolderStructure {
+            id: Uuid::new_v4().to_string(),
+            name: "By Category".to_string(),
+            pattern: "{category}".to_string(),
+            description: Some("Organize files by type (images, documents, etc.)".to_string()),
+            enabled: true,
+            priority: 30,
+            created_at: DEFAULT_TIMESTAMP.to_string(),
+            updated_at: DEFAULT_TIMESTAMP.to_string(),
+        },
+        FolderStructure {
+            id: Uuid::new_v4().to_string(),
+            name: "By Year/Month/Day".to_string(),
+            pattern: "{year}/{month}/{day}".to_string(),
+            description: Some("Organize files by full date hierarchy".to_string()),
+            enabled: false,
+            priority: 40,
+            created_at: DEFAULT_TIMESTAMP.to_string(),
+            updated_at: DEFAULT_TIMESTAMP.to_string(),
+        },
+    ]
+}
+
 /// Generate default configuration
 fn default_config() -> AppConfig {
     AppConfig {
         version: 1,
         templates: default_templates(),
+        folder_structures: default_folder_structures(),
         preferences: Preferences::default(),
         recent_folders: Vec::new(),
         ollama: OllamaConfig::default(),
@@ -464,7 +543,7 @@ pub async fn get_config() -> Result<AppConfig, ConfigError> {
     }
 
     // Parse JSON
-    let config: AppConfig = serde_json::from_str(&content).map_err(|e| {
+    let mut config: AppConfig = serde_json::from_str(&content).map_err(|e| {
         // Return defaults on parse error (graceful degradation)
         eprintln!(
             "Warning: Invalid config at {}: {}",
@@ -473,6 +552,11 @@ pub async fn get_config() -> Result<AppConfig, ConfigError> {
         );
         ConfigError::ParseError(e.to_string())
     })?;
+
+    // Migration: ensure folder_structures has defaults if empty
+    if config.folder_structures.is_empty() {
+        config.folder_structures = default_folder_structures();
+    }
 
     Ok(config)
 }
