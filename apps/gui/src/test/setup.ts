@@ -13,6 +13,21 @@ import { vi } from "vitest";
 // Mock scrollIntoView for Radix UI components (not implemented in jsdom)
 Element.prototype.scrollIntoView = vi.fn();
 
+// Mock matchMedia for components using media queries (e.g., next-themes, sonner)
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(), // deprecated
+    removeListener: vi.fn(), // deprecated
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
+
 // Mock Tauri API for tests
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -30,6 +45,27 @@ vi.mock("@tauri-apps/api/webview", () => ({
     onDragDropEvent: vi.fn(() => Promise.resolve(() => {})),
   })),
 }));
+
+// Mock Tauri event API for menu events
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+  emit: vi.fn(),
+}));
+
+// Mock tauri-controls for tests (it imports CSS which doesn't work in Vitest)
+vi.mock("tauri-controls", async () => {
+  const React = await import("react");
+  return {
+    WindowTitlebar: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+      return React.createElement(
+        "div",
+        { "data-testid": "window-titlebar", className },
+        children
+      );
+    },
+    WindowControls: () => null,
+  };
+});
 
 // Mock @tanstack/react-virtual for testing
 // In JSDOM, scroll containers have 0 dimensions so virtualization doesn't work

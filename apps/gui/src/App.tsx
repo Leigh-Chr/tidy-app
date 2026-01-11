@@ -1,15 +1,14 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/stores/app-store";
 import { DropZone } from "@/components/drop-zone/DropZone";
-import { FolderBreadcrumb } from "@/components/folder-breadcrumb/FolderBreadcrumb";
-import { SettingsModal } from "@/components/settings-modal/SettingsModal";
 import { PreviewPanel } from "@/components/preview-panel/PreviewPanel";
 import { ScanOptions } from "@/components/scan-options/ScanOptions";
 import { FileStats } from "@/components/file-stats/FileStats";
-import { HelpDialog } from "@/components/help-dialog/HelpDialog";
 import { ExportButton } from "@/components/export-button/ExportButton";
+import { TitleBar } from "@/components/titlebar/TitleBar";
 import { Toaster } from "@/components/ui/sonner";
 import { openFolderDialog } from "@/lib/tauri";
 
@@ -33,11 +32,36 @@ function App() {
   // Get filtered files for display
   const filteredFiles = getFilteredFiles();
 
+  // Window maximized state for conditional styling
+  const [isMaximized, setIsMaximized] = useState(false);
+
   useEffect(() => {
     loadVersion();
     // Load config to restore persisted scan options (Story 6.5 - AC1)
     loadConfig();
   }, [loadVersion, loadConfig]);
+
+  // Track window maximized state
+  useEffect(() => {
+    const checkMaximized = async () => {
+      const maximized = await getCurrentWindow().isMaximized();
+      setIsMaximized(maximized);
+    };
+    checkMaximized();
+
+    const unlisten = getCurrentWindow().onResized(() => {
+      void getCurrentWindow().isMaximized().then(setIsMaximized);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  const handleMaximizeToggle = useCallback(async () => {
+    const maximized = await getCurrentWindow().isMaximized();
+    setIsMaximized(maximized);
+  }, []);
 
   const handleBrowseClick = useCallback(async () => {
     try {
@@ -70,34 +94,12 @@ function App() {
   const hasScanError = scanStatus === "error";
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-foreground">tidy-app</h1>
-            {versionInfo && (
-              <span className="text-sm text-muted-foreground">
-                v{versionInfo.version}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Show folder breadcrumb in header when folder is selected */}
-            {hasFolder && (
-              <FolderBreadcrumb path={selectedFolder} onClear={clearFolder} />
-            )}
-            {/* Help button */}
-            <HelpDialog />
-            {/* Settings button */}
-            <SettingsModal />
-          </div>
-        </div>
-      </header>
+    <div className={`flex h-screen flex-col overflow-hidden bg-background ${!isMaximized ? 'rounded-xl border border-border/50 shadow-2xl' : ''}`}>
+      {/* Title Bar with window controls */}
+      <TitleBar showBreadcrumb={hasFolder} isMaximized={isMaximized} onMaximizeToggle={handleMaximizeToggle} />
 
       {/* Main Content */}
-      <main className="container mx-auto px-6 py-8 pb-24">
+      <main className="flex-1 overflow-y-auto container mx-auto px-6 py-8">
         {/* Welcome Card - shown when no folder selected */}
         {!hasFolder && (
           <Card className="mx-auto max-w-2xl">
@@ -255,7 +257,7 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 border-t border-border bg-background px-6 py-3">
+      <footer className={`border-t border-border/50 bg-muted/30 px-6 py-3 ${!isMaximized ? 'rounded-b-xl' : ''}`}>
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>Intelligent file organization</span>
           <span>v{versionInfo?.version ?? "0.2.0"}</span>

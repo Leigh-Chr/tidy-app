@@ -241,14 +241,16 @@ export function TemplateEditor({ template, onClose }: TemplateEditorProps) {
                 className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded"
               >
                 .{type}
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={() => handleRemoveFileType(type)}
-                  className="hover:text-destructive"
+                  className="h-4 w-4 p-0 hover:text-destructive hover:bg-transparent"
                   data-testid={`remove-file-type-${type}`}
                 >
                   <X className="h-3 w-3" />
-                </button>
+                </Button>
               </span>
             ))}
           </div>

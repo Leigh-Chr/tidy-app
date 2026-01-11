@@ -10,15 +10,30 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AiSuggestion,
   AppConfig,
+  BatchAnalysisResult,
   BatchRenameResult,
   FileInfo,
+  HealthStatus,
+  LlmProvider,
+  OllamaConfig,
+  OllamaModel,
+  OpenAiConfig,
+  OpenAiModel,
   Preferences,
   RenamePreview,
   RenameProposal,
   ScanResult,
   Template,
   VersionInfo,
+} from "@/lib/tauri";
+import {
+  analyzeFilesWithLlm,
+  checkOllamaHealth,
+  checkOpenAiHealth,
+  listOllamaModels,
+  listOpenAiModels,
 } from "@/lib/tauri";
 
 // =============================================================================
@@ -29,9 +44,11 @@ export type AppStatus = "idle" | "loading" | "success" | "error";
 export type ScanStatus = "idle" | "scanning" | "success" | "error";
 export type ConfigStatus = "idle" | "loading" | "saving" | "success" | "error";
 export type PreviewStatus = "idle" | "generating" | "ready" | "applying" | "error";
+export type LlmStatus = "idle" | "checking" | "available" | "unavailable";
+export type AiAnalysisStatus = "idle" | "analyzing" | "done" | "error";
 
 // Re-export types for consumers that import from the store
-export type { VersionInfo, AppConfig, Template, Preferences, RenamePreview, RenameProposal, BatchRenameResult };
+export type { VersionInfo, AppConfig, Template, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult };
 
 export type Result<T, E = Error> =
   | { ok: true; data: T }
@@ -72,6 +89,18 @@ export interface AppState {
   selectedProposalIds: Set<string>;
   lastRenameResult: BatchRenameResult | null;
 
+  // LLM State
+  llmStatus: LlmStatus;
+  llmModels: OllamaModel[];
+  openaiModels: OpenAiModel[];
+  llmError: string | null;
+
+  // AI Analysis State
+  aiAnalysisStatus: AiAnalysisStatus;
+  aiSuggestions: Map<string, AiSuggestion>;
+  aiAnalysisError: string | null;
+  lastAnalysisResult: BatchAnalysisResult | null;
+
   // Actions
   setStatus: (status: AppStatus) => void;
   setError: (error: string | null) => void;
@@ -101,6 +130,16 @@ export interface AppState {
   deselectAll: () => void;
   applyRenames: (proposalIds?: string[]) => Promise<Result<BatchRenameResult>>;
   clearPreview: () => void;
+
+  // LLM Actions
+  checkLlmHealth: () => Promise<Result<HealthStatus>>;
+  loadLlmModels: () => Promise<Result<OllamaModel[]>>;
+  loadOpenAiModels: () => Promise<Result<OpenAiModel[]>>;
+  updateOllamaConfig: (updates: Partial<OllamaConfig>) => Promise<Result<void>>;
+
+  // AI Analysis Actions
+  analyzeFilesWithAi: (files: FileInfo[]) => Promise<Result<BatchAnalysisResult>>;
+  clearAiSuggestions: () => void;
 }
 
 // =============================================================================
@@ -130,6 +169,16 @@ const initialState = {
   previewError: null as string | null,
   selectedProposalIds: new Set<string>(),
   lastRenameResult: null as BatchRenameResult | null,
+  // LLM State
+  llmStatus: "idle" as LlmStatus,
+  llmModels: [] as OllamaModel[],
+  openaiModels: [] as OpenAiModel[],
+  llmError: null as string | null,
+  // AI Analysis State
+  aiAnalysisStatus: "idle" as AiAnalysisStatus,
+  aiSuggestions: new Map<string, AiSuggestion>(),
+  aiAnalysisError: null as string | null,
+  lastAnalysisResult: null as BatchAnalysisResult | null,
 };
 
 export const useAppStore = create<AppState>((set) => ({
@@ -157,6 +206,12 @@ export const useAppStore = create<AppState>((set) => ({
       selectedFolder: path,
       scanStatus: "scanning",
       scanError: null,
+      // Reset preview state so it regenerates for the new folder
+      preview: null,
+      previewStatus: "idle",
+      previewError: null,
+      selectedProposalIds: new Set<string>(),
+      lastRenameResult: null,
     });
 
     try {
@@ -427,6 +482,33 @@ export const useAppStore = create<AppState>((set) => ({
         templatePattern,
         options: undefined,
       });
+
+      // Apply AI suggestions to proposals if available
+      const { aiSuggestions } = useAppStore.getState();
+      if (aiSuggestions.size > 0) {
+        preview.proposals = preview.proposals.map((proposal) => {
+          const suggestion = aiSuggestions.get(proposal.originalPath);
+          if (suggestion) {
+            // Get the file extension from the original name
+            const ext = proposal.originalName.includes(".")
+              ? "." + proposal.originalName.split(".").pop()
+              : "";
+            const newName = suggestion.suggestedName + ext;
+            const dir = proposal.originalPath.substring(
+              0,
+              proposal.originalPath.lastIndexOf("/") + 1
+            );
+            return {
+              ...proposal,
+              proposedName: newName,
+              proposedPath: dir + newName,
+              // Don't add "AI" to metadataSources - it's shown separately via aiSuggestions
+            };
+          }
+          return proposal;
+        });
+      }
+
       set({
         preview,
         previewStatus: "ready",
@@ -524,5 +606,178 @@ export const useAppStore = create<AppState>((set) => ({
       selectedProposalIds: new Set<string>(),
       lastRenameResult: null,
     });
+  },
+
+  // ==========================================================================
+  // LLM Actions
+  // ==========================================================================
+
+  checkLlmHealth: async (): Promise<Result<HealthStatus>> => {
+    const { config } = useAppStore.getState();
+    if (!config) {
+      const error = new Error("Config not loaded");
+      set({ llmError: error.message, llmStatus: "unavailable" });
+      return { ok: false, error };
+    }
+
+    set({ llmStatus: "checking", llmError: null });
+
+    try {
+      let health: HealthStatus;
+
+      if (config.ollama.provider === "openai") {
+        // Check OpenAI health
+        health = await checkOpenAiHealth(
+          config.ollama.openai.apiKey,
+          config.ollama.openai.baseUrl,
+          config.ollama.healthCheckTimeout
+        );
+        set({
+          llmStatus: health.available ? "available" : "unavailable",
+          llmError: health.available ? null : "OpenAI not configured or unavailable",
+        });
+      } else {
+        // Check Ollama health
+        health = await checkOllamaHealth(
+          config.ollama.baseUrl,
+          config.ollama.healthCheckTimeout
+        );
+        set({
+          llmStatus: health.available ? "available" : "unavailable",
+          llmError: health.available ? null : "Ollama is not running",
+        });
+      }
+
+      return { ok: true, data: health };
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      set({ llmStatus: "unavailable", llmError: errorMessage });
+      return { ok: false, error: e instanceof Error ? e : new Error(errorMessage) };
+    }
+  },
+
+  loadLlmModels: async (): Promise<Result<OllamaModel[]>> => {
+    const { config } = useAppStore.getState();
+    if (!config) {
+      const error = new Error("Config not loaded");
+      set({ llmError: error.message });
+      return { ok: false, error };
+    }
+
+    try {
+      const models = await listOllamaModels(
+        config.ollama.baseUrl,
+        config.ollama.timeout
+      );
+      set({ llmModels: models, llmError: null });
+      return { ok: true, data: models };
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      set({ llmModels: [], llmError: errorMessage });
+      return { ok: false, error: e instanceof Error ? e : new Error(errorMessage) };
+    }
+  },
+
+  loadOpenAiModels: async (): Promise<Result<OpenAiModel[]>> => {
+    try {
+      const models = await listOpenAiModels();
+      set({ openaiModels: models, llmError: null });
+      return { ok: true, data: models };
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      set({ openaiModels: [], llmError: errorMessage });
+      return { ok: false, error: e instanceof Error ? e : new Error(errorMessage) };
+    }
+  },
+
+  updateOllamaConfig: async (updates: Partial<OllamaConfig>): Promise<Result<void>> => {
+    const currentConfig = useAppStore.getState().config;
+    if (!currentConfig) {
+      const error = new Error("Config not loaded");
+      set({ configError: error.message, configStatus: "error" });
+      return { ok: false, error };
+    }
+
+    const updatedConfig: AppConfig = {
+      ...currentConfig,
+      ollama: {
+        ...currentConfig.ollama,
+        ...updates,
+      },
+    };
+
+    return useAppStore.getState().saveConfig(updatedConfig);
+  },
+
+  // ==========================================================================
+  // AI Analysis Actions
+  // ==========================================================================
+
+  analyzeFilesWithAi: async (files: FileInfo[]): Promise<Result<BatchAnalysisResult>> => {
+    const { config } = useAppStore.getState();
+    if (!config) {
+      const error = new Error("Config not loaded");
+      set({ aiAnalysisError: error.message, aiAnalysisStatus: "error" });
+      return { ok: false, error };
+    }
+
+    if (!config.ollama.enabled) {
+      const error = new Error("AI analysis is disabled");
+      set({ aiAnalysisError: error.message, aiAnalysisStatus: "error" });
+      return { ok: false, error };
+    }
+
+    set({ aiAnalysisStatus: "analyzing", aiAnalysisError: null });
+
+    try {
+      const filePaths = files.map((f) => f.path);
+      const result = await analyzeFilesWithLlm(filePaths, config.ollama);
+
+      // Build suggestions map from results
+      const suggestions = new Map<string, AiSuggestion>();
+      for (const r of result.results) {
+        if (r.suggestion) {
+          suggestions.set(r.filePath, r.suggestion);
+        }
+      }
+
+      set({
+        aiAnalysisStatus: "done",
+        aiSuggestions: suggestions,
+        aiAnalysisError: null,
+        lastAnalysisResult: result,
+      });
+
+      // Regenerate preview to apply AI suggestions
+      const { preview, scanResult } = useAppStore.getState();
+      if (preview && scanResult && suggestions.size > 0) {
+        // Regenerate preview with the same template to apply AI suggestions
+        useAppStore.getState().generatePreview(scanResult.files, preview.templateUsed);
+      }
+
+      return { ok: true, data: result };
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      set({
+        aiAnalysisStatus: "error",
+        aiAnalysisError: errorMessage,
+      });
+      return { ok: false, error: e instanceof Error ? e : new Error(errorMessage) };
+    }
+  },
+
+  clearAiSuggestions: () => {
+    set({
+      aiAnalysisStatus: "idle",
+      aiSuggestions: new Map<string, AiSuggestion>(),
+      aiAnalysisError: null,
+      lastAnalysisResult: null,
+    });
+
+    // Regenerate preview without AI suggestions
+    const { preview, scanResult } = useAppStore.getState();
+    if (preview && scanResult) {
+      useAppStore.getState().generatePreview(scanResult.files, preview.templateUsed);
+    }
   },
 }));

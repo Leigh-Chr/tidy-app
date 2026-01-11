@@ -24,6 +24,30 @@ const mockConfig: AppConfig = {
   templates: [],
   preferences: defaultPreferences,
   recentFolders: [],
+  ollama: {
+    enabled: false,
+    provider: "ollama",
+    baseUrl: "http://localhost:11434",
+    timeout: 30000,
+    models: {},
+    fileTypes: {
+      preset: "documents",
+      includedExtensions: [],
+      excludedExtensions: [],
+      skipWithMetadata: true,
+    },
+    visionEnabled: false,
+    skipImagesWithExif: true,
+    maxImageSize: 20 * 1024 * 1024,
+    offlineMode: "auto",
+    healthCheckTimeout: 5000,
+    openai: {
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o-mini",
+      visionModel: "gpt-4o",
+    },
+  },
 };
 
 describe("PreferencesPanel", () => {

@@ -163,20 +163,21 @@ describe("PreviewRow", () => {
   });
 
   describe("expandable details", () => {
-    it("shows expand button when has metadata sources", () => {
+    it("shows expand button when has metadata sources and onToggleExpand is provided", () => {
       const proposal = createMockProposal({ metadataSources: ["EXIF", "PDF"] });
       render(
         <PreviewRow
           proposal={proposal}
           isSelected={false}
           onToggleSelection={() => {}}
+          onToggleExpand={() => {}}
         />
       );
 
       expect(screen.getByTestId("preview-expand-test-1")).toBeInTheDocument();
     });
 
-    it("shows expand button when has issues", () => {
+    it("shows expand button when has issues and onToggleExpand is provided", () => {
       const proposal = createMockProposal({
         status: "conflict",
         issues: [{ code: "CONFLICT", message: "File exists" }],
@@ -187,14 +188,27 @@ describe("PreviewRow", () => {
           proposal={proposal}
           isSelected={false}
           onToggleSelection={() => {}}
+          onToggleExpand={() => {}}
         />
       );
 
       expect(screen.getByTestId("preview-expand-test-1")).toBeInTheDocument();
     });
 
-    it("expands to show details when expand button clicked", async () => {
-      const user = userEvent.setup();
+    it("hides expand button when onToggleExpand is not provided", () => {
+      const proposal = createMockProposal({ metadataSources: ["EXIF", "PDF"] });
+      render(
+        <PreviewRow
+          proposal={proposal}
+          isSelected={false}
+          onToggleSelection={() => {}}
+        />
+      );
+
+      expect(screen.queryByTestId("preview-expand-test-1")).not.toBeInTheDocument();
+    });
+
+    it("shows details when isExpanded is true", () => {
       const proposal = createMockProposal({ metadataSources: ["EXIF"] });
 
       render(
@@ -202,21 +216,51 @@ describe("PreviewRow", () => {
           proposal={proposal}
           isSelected={false}
           onToggleSelection={() => {}}
+          isExpanded={true}
+          onToggleExpand={() => {}}
         />
       );
 
-      // Initially details should be hidden
-      expect(screen.queryByTestId("preview-details-test-1")).not.toBeInTheDocument();
-
-      // Click expand
-      await user.click(screen.getByTestId("preview-expand-test-1"));
-
-      // Details should now be visible
       expect(screen.getByTestId("preview-details-test-1")).toBeInTheDocument();
     });
 
-    it("shows metadata source badges when expanded", async () => {
+    it("hides details when isExpanded is false", () => {
+      const proposal = createMockProposal({ metadataSources: ["EXIF"] });
+
+      render(
+        <PreviewRow
+          proposal={proposal}
+          isSelected={false}
+          onToggleSelection={() => {}}
+          isExpanded={false}
+          onToggleExpand={() => {}}
+        />
+      );
+
+      expect(screen.queryByTestId("preview-details-test-1")).not.toBeInTheDocument();
+    });
+
+    it("calls onToggleExpand when expand button clicked", async () => {
       const user = userEvent.setup();
+      const proposal = createMockProposal({ metadataSources: ["EXIF"] });
+      const onToggleExpand = vi.fn();
+
+      render(
+        <PreviewRow
+          proposal={proposal}
+          isSelected={false}
+          onToggleSelection={() => {}}
+          isExpanded={false}
+          onToggleExpand={onToggleExpand}
+        />
+      );
+
+      await user.click(screen.getByTestId("preview-expand-test-1"));
+
+      expect(onToggleExpand).toHaveBeenCalled();
+    });
+
+    it("shows metadata source badges when expanded", () => {
       const proposal = createMockProposal({ metadataSources: ["EXIF", "filename"] });
 
       render(
@@ -224,17 +268,16 @@ describe("PreviewRow", () => {
           proposal={proposal}
           isSelected={false}
           onToggleSelection={() => {}}
+          isExpanded={true}
+          onToggleExpand={() => {}}
         />
       );
-
-      await user.click(screen.getByTestId("preview-expand-test-1"));
 
       expect(screen.getByText("EXIF")).toBeInTheDocument();
       expect(screen.getByText("filename")).toBeInTheDocument();
     });
 
-    it("shows issues when expanded", async () => {
-      const user = userEvent.setup();
+    it("shows issues when expanded", () => {
       const proposal = createMockProposal({
         status: "conflict",
         issues: [
@@ -248,17 +291,16 @@ describe("PreviewRow", () => {
           proposal={proposal}
           isSelected={false}
           onToggleSelection={() => {}}
+          isExpanded={true}
+          onToggleExpand={() => {}}
         />
       );
-
-      await user.click(screen.getByTestId("preview-expand-test-1"));
 
       expect(screen.getByText("File already exists")).toBeInTheDocument();
       expect(screen.getByText("(field: proposedName)")).toBeInTheDocument();
     });
 
-    it("shows full paths when expanded", async () => {
-      const user = userEvent.setup();
+    it("shows full paths when expanded", () => {
       const proposal = createMockProposal({
         originalPath: "/home/user/photos/photo.jpg",
         proposedPath: "/home/user/photos/2026-01-01_photo.jpg",
@@ -269,34 +311,13 @@ describe("PreviewRow", () => {
           proposal={proposal}
           isSelected={false}
           onToggleSelection={() => {}}
+          isExpanded={true}
+          onToggleExpand={() => {}}
         />
       );
-
-      await user.click(screen.getByTestId("preview-expand-test-1"));
 
       expect(screen.getByText(/Original: \/home\/user\/photos\/photo.jpg/)).toBeInTheDocument();
       expect(screen.getByText(/Proposed: \/home\/user\/photos\/2026-01-01_photo.jpg/)).toBeInTheDocument();
-    });
-
-    it("collapses details on second click", async () => {
-      const user = userEvent.setup();
-      const proposal = createMockProposal({ metadataSources: ["EXIF"] });
-
-      render(
-        <PreviewRow
-          proposal={proposal}
-          isSelected={false}
-          onToggleSelection={() => {}}
-        />
-      );
-
-      // Expand
-      await user.click(screen.getByTestId("preview-expand-test-1"));
-      expect(screen.getByTestId("preview-details-test-1")).toBeInTheDocument();
-
-      // Collapse
-      await user.click(screen.getByTestId("preview-expand-test-1"));
-      expect(screen.queryByTestId("preview-details-test-1")).not.toBeInTheDocument();
     });
   });
 

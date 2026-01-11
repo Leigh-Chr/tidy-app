@@ -105,6 +105,8 @@ export const analysisSuggestionSchema = z.object({
   reasoning: z.string(),
   /** Extracted keywords from content */
   keywords: z.array(z.string()).optional().default([]),
+  /** Whether to keep the original filename (true when original is already good) */
+  keepOriginal: z.boolean().optional().default(false),
 });
 
 export type AnalysisSuggestion = z.infer<typeof analysisSuggestionSchema>;

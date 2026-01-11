@@ -186,6 +186,30 @@ describe("useAppStore", () => {
       recursiveScan: false,
     },
     recentFolders: [],
+    ollama: {
+      enabled: false,
+      provider: "ollama" as const,
+      baseUrl: "http://localhost:11434",
+      timeout: 30000,
+      models: {},
+      fileTypes: {
+        preset: "documents" as const,
+        includedExtensions: [],
+        excludedExtensions: [],
+        skipWithMetadata: true,
+      },
+      visionEnabled: false,
+      skipImagesWithExif: true,
+      maxImageSize: 20 * 1024 * 1024,
+      offlineMode: "auto" as const,
+      healthCheckTimeout: 5000,
+      openai: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4o-mini",
+        visionModel: "gpt-4o",
+      },
+    },
   };
 
   describe("loadConfig", () => {

@@ -160,6 +160,42 @@ export const offlineModeSchema = z.enum(['auto', 'enabled', 'disabled']);
 export type OfflineModeValue = z.infer<typeof offlineModeSchema>;
 
 // =============================================================================
+// Provider Types
+// =============================================================================
+
+/**
+ * Supported LLM provider types.
+ */
+export const llmProviderSchema = z.enum(['ollama', 'openai']);
+export type LlmProvider = z.infer<typeof llmProviderSchema>;
+
+/**
+ * OpenAI-specific configuration.
+ */
+export const openaiConfigSchema = z.object({
+  /** OpenAI API key */
+  apiKey: z.string().default(''),
+  /** API base URL (for Azure OpenAI or proxies) */
+  baseUrl: z.string().url().default('https://api.openai.com/v1'),
+  /** Model to use for text analysis */
+  model: z.string().default('gpt-4o-mini'),
+  /** Model to use for vision analysis */
+  visionModel: z.string().default('gpt-4o'),
+});
+
+export type OpenAiConfig = z.infer<typeof openaiConfigSchema>;
+
+/**
+ * Default OpenAI configuration.
+ */
+export const DEFAULT_OPENAI_CONFIG: OpenAiConfig = {
+  apiKey: '',
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gpt-4o-mini',
+  visionModel: 'gpt-4o',
+};
+
+// =============================================================================
 // Ollama Configuration (Story 10.1, updated Story 10.4, 10.6)
 // =============================================================================
 
@@ -169,8 +205,10 @@ export type OfflineModeValue = z.infer<typeof offlineModeSchema>;
  * Stored in app config and used to connect to Ollama.
  */
 export const ollamaConfigSchema = z.object({
-  /** Whether Ollama integration is enabled */
+  /** Whether LLM integration is enabled */
   enabled: z.boolean().default(false),
+  /** Which LLM provider to use */
+  provider: llmProviderSchema.default('ollama'),
   /** Ollama API base URL */
   baseUrl: z.string().url().default('http://localhost:11434'),
   /** Request timeout in milliseconds */
@@ -189,6 +227,8 @@ export const ollamaConfigSchema = z.object({
   offlineMode: offlineModeSchema.default('auto'),
   /** Health check timeout in milliseconds for pre-operation checks (Story 10.6) */
   healthCheckTimeout: z.number().positive().default(5000),
+  /** OpenAI configuration (used when provider is 'openai') */
+  openai: openaiConfigSchema.default(DEFAULT_OPENAI_CONFIG),
 });
 
 export type OllamaConfig = z.infer<typeof ollamaConfigSchema>;
@@ -198,6 +238,7 @@ export type OllamaConfig = z.infer<typeof ollamaConfigSchema>;
  */
 export const DEFAULT_OLLAMA_CONFIG: OllamaConfig = {
   enabled: false,
+  provider: 'ollama',
   baseUrl: 'http://localhost:11434',
   timeout: 30000,
   models: {},
@@ -207,6 +248,7 @@ export const DEFAULT_OLLAMA_CONFIG: OllamaConfig = {
   maxImageSize: 20 * 1024 * 1024,
   offlineMode: 'auto',
   healthCheckTimeout: 5000,
+  openai: DEFAULT_OPENAI_CONFIG,
 };
 
 // =============================================================================

@@ -7,10 +7,10 @@
  * Story 6.4 - AC1: Preview Table Display, AC2: Status Indicators, AC4: Visual Comparison
  */
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useState, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { RenamePreview, RenameProposal, RenameStatus } from "@/lib/tauri";
+import type { AiSuggestion, RenamePreview, RenameProposal, RenameStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { PreviewRow } from "./PreviewRow";
 
@@ -25,6 +25,8 @@ export interface PreviewTableProps {
   collapsedGroups?: Set<RenameStatus>;
   /** Callback when a group is toggled */
   onToggleGroup?: (status: RenameStatus) => void;
+  /** AI suggestions by file path */
+  aiSuggestions?: Map<string, AiSuggestion>;
 }
 
 /** Status group configuration for display order and styling */
@@ -46,8 +48,22 @@ export function PreviewTable({
   onToggleSelection,
   collapsedGroups = new Set(),
   onToggleGroup,
+  aiSuggestions,
 }: PreviewTableProps) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleRowExpansion = useCallback((proposalId: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(proposalId)) {
+        next.delete(proposalId);
+      } else {
+        next.add(proposalId);
+      }
+      return next;
+    });
+  }, []);
 
   // Group proposals by status
   const groupedProposals = useMemo(() => {
@@ -94,15 +110,35 @@ export function PreviewTable({
     return items;
   }, [groupedProposals, collapsedGroups]);
 
-  // Set up virtualizer
+  // Convert expanded rows to a string for dependency tracking
+  const expandedRowsKey = useMemo(
+    () => Array.from(expandedRows).sort().join(","),
+    [expandedRows]
+  );
+
+  // Set up virtualizer with dynamic measurement support
   const virtualizer = useVirtualizer({
     count: flattenedItems.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (index) => {
-      const item = flattenedItems[index];
-      return item.type === "header" ? 40 : 56;
-    },
+    estimateSize: useCallback(
+      (index: number) => {
+        const item = flattenedItems[index];
+        if (item.type === "header") return 40;
+        // Estimate larger size for expanded rows
+        const isExpanded = expandedRows.has(item.proposal.id);
+        return isExpanded ? 200 : 56;
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [flattenedItems, expandedRowsKey]
+    ),
     overscan: 5,
+    getItemKey: (index) => {
+      const item = flattenedItems[index];
+      if (item.type === "header") return `header-${item.status}`;
+      // Include expanded state in key to force re-render when toggled
+      const isExpanded = expandedRows.has(item.proposal.id);
+      return `${item.proposal.id}-${isExpanded}`;
+    },
   });
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -184,12 +220,16 @@ export function PreviewTable({
               );
             }
 
+            // Get AI suggestion for this file
+            const aiSuggestion = aiSuggestions?.get(item.proposal.originalPath);
+            const isRowExpanded = expandedRows.has(item.proposal.id);
+
             return (
               <div
                 key={item.proposal.id}
                 className="absolute top-0 left-0 w-full"
                 style={{
-                  height: `${virtualItem.size}px`,
+                  minHeight: `${virtualItem.size}px`,
                   transform: `translateY(${virtualItem.start}px)`,
                 }}
               >
@@ -197,6 +237,9 @@ export function PreviewTable({
                   proposal={item.proposal}
                   isSelected={selectedIds.has(item.proposal.id)}
                   onToggleSelection={() => onToggleSelection(item.proposal.id)}
+                  aiSuggestion={aiSuggestion}
+                  isExpanded={isRowExpanded}
+                  onToggleExpand={() => toggleRowExpansion(item.proposal.id)}
                 />
               </div>
             );

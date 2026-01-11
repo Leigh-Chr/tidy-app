@@ -44,7 +44,9 @@ import {
 /**
  * System prompt for naming suggestions.
  */
-const NAMING_SYSTEM_PROMPT = `You are a file naming assistant. Your job is to suggest descriptive filenames based on content analysis.
+const NAMING_SYSTEM_PROMPT = `You are a file naming assistant. Your job is to evaluate existing filenames and suggest improvements ONLY when beneficial.
+
+CRITICAL RULE: The original filename often contains valuable information (dates, project codes, version numbers, identifiers). You MUST preserve these elements unless they are clearly wrong.
 
 Guidelines:
 - Use kebab-case (lowercase with hyphens)
@@ -54,23 +56,40 @@ Guidelines:
 - Extract key themes, topics, or subjects
 - For documents: focus on topic/purpose
 - For code: focus on functionality/module name
-- For data: focus on dataset description`;
+- For data: focus on dataset description
+
+IMPORTANT - When to keep the original name (set keepOriginal: true):
+- The original name is already descriptive and meaningful
+- The original contains important identifiers, codes, or references
+- The content doesn't provide significantly better naming information
+- Any improvement would lose important context from the original
+
+When suggesting a new name:
+- Merge relevant parts of the original with new insights from content
+- Preserve dates, version numbers, project codes from the original
+- Only change what genuinely improves clarity`;
 
 /**
  * Create the analysis prompt for a file.
  */
-function createAnalysisPrompt(content: string, fileType?: string): string {
-  const fileContext = fileType ? ` (file type: ${fileType})` : '';
+function createAnalysisPrompt(content: string, fileType?: string, originalName?: string): string {
+  const fileContext = fileType ? `File type: ${fileType}` : '';
+  const nameContext = originalName ? `Current filename: "${originalName}"` : '';
 
-  return `Analyze the following file content${fileContext} and suggest a descriptive filename.
+  return `Evaluate whether this file needs renaming and suggest an improved name if beneficial.
+
+${nameContext}
+${fileContext}
 
 Content:
 ---
 ${content}
 ---
 
+Evaluate the current filename against the content. If the original name is already good, set keepOriginal to true and return the original name. Only suggest a different name if it would be a significant improvement.
+
 Respond ONLY with valid JSON in this exact format (no other text):
-{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation", "keywords": ["keyword1", "keyword2"]}`;
+{"suggestedName": "descriptive-name", "confidence": 0.85, "reasoning": "Brief explanation", "keywords": ["keyword1", "keyword2"], "keepOriginal": false}`;
 }
 
 // =============================================================================
@@ -130,9 +149,14 @@ export async function analyzeFile(
     ));
   }
 
+  // Extract original filename (without extension) for the prompt
+  const path = await import('path');
+  const originalName = path.basename(filePath, path.extname(filePath));
+
   // Analyze the content
   const analyzeResult = await analyzeContent(content, config, {
     fileType: options?.fileType,
+    originalName,
   });
 
   if (!analyzeResult.ok) {
@@ -164,6 +188,7 @@ export async function analyzeContent(
   config: OllamaConfig,
   options?: {
     fileType?: string;
+    originalName?: string;
   }
 ): Promise<Result<AnalysisSuggestion, OllamaError>> {
   // Get the model
@@ -176,7 +201,7 @@ export async function analyzeContent(
   }
 
   // Create the prompt
-  const prompt = createAnalysisPrompt(content, options?.fileType);
+  const prompt = createAnalysisPrompt(content, options?.fileType, options?.originalName);
 
   // Generate completion
   const generateResult = await generateCompletion(config, {
