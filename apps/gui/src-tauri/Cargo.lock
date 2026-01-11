@@ -4250,6 +4250,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
+ "lazy_static",
  "regex-lite",
  "reqwest",
  "serde",
