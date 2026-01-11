@@ -34,6 +34,9 @@ import { createUndoCommand } from './commands/undo.js';
 import { createRestoreCommand } from './commands/restore.js';
 import { createScanCommand } from './commands/scan.js';
 import { createInfoCommand } from './commands/info.js';
+import { createPreviewCommand } from './commands/preview.js';
+import { createApplyCommand } from './commands/apply.js';
+import { createAnalyzeCommand } from './commands/analyze.js';
 import { setupSignalHandlers } from './utils/signals.js';
 import { ExitCode } from './utils/exit-codes.js';
 
@@ -100,6 +103,15 @@ program.addCommand(createInfoCommand());
 
 // Scan command (Story 5.5)
 program.addCommand(createScanCommand());
+
+// Preview command - Preview rename proposals
+program.addCommand(createPreviewCommand());
+
+// Apply command - Execute renames
+program.addCommand(createApplyCommand());
+
+// Analyze command - AI-powered analysis
+program.addCommand(createAnalyzeCommand());
 
 // Config command (Story 5.3)
 program.addCommand(createConfigCommand());
