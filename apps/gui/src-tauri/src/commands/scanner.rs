@@ -1,7 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::Emitter;
 use thiserror::Error;
+use uuid::Uuid;
 use walkdir::WalkDir;
 
 /// Error types for scan operations
@@ -98,6 +103,138 @@ pub struct ScanResult {
     pub total_count: usize,
     /// Total size in bytes
     pub total_size: u64,
+    /// Scan session ID (for tracking/cancellation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Whether the scan was cancelled
+    #[serde(default)]
+    pub cancelled: bool,
+}
+
+// =============================================================================
+// Progress Reporting Types
+// =============================================================================
+
+/// Progress event payload for scan operations
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgress {
+    /// Scan session ID
+    pub session_id: String,
+    /// Current file being processed
+    pub current_file: String,
+    /// Number of files discovered so far
+    pub discovered: usize,
+    /// Number of files processed (after filtering)
+    pub processed: usize,
+    /// Current phase of scanning
+    pub phase: ScanPhase,
+    /// Whether scan is complete
+    pub complete: bool,
+    /// Error message if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Phases of scanning operation
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScanPhase {
+    /// Initial phase - preparing to scan
+    Starting,
+    /// Walking directory tree
+    Discovering,
+    /// Processing discovered files
+    Processing,
+    /// Scan complete
+    Complete,
+    /// Scan was cancelled
+    Cancelled,
+}
+
+// =============================================================================
+// Cancellation Support
+// =============================================================================
+
+/// A cancellation token for async operations
+#[derive(Clone)]
+pub struct CancellationToken {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl CancellationToken {
+    pub fn new() -> Self {
+        Self {
+            cancelled: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+}
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// State for managing active scan sessions
+pub struct ScanState {
+    /// Active scan sessions with their cancellation tokens
+    sessions: Mutex<HashMap<String, CancellationToken>>,
+}
+
+impl ScanState {
+    pub fn new() -> Self {
+        Self {
+            sessions: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Create a new scan session and return its ID
+    pub fn create_session(&self) -> (String, CancellationToken) {
+        let session_id = Uuid::new_v4().to_string();
+        let token = CancellationToken::new();
+
+        let mut sessions = self.sessions.lock().unwrap();
+        sessions.insert(session_id.clone(), token.clone());
+
+        (session_id, token)
+    }
+
+    /// Cancel a scan session by ID
+    pub fn cancel_session(&self, session_id: &str) -> bool {
+        let sessions = self.sessions.lock().unwrap();
+        if let Some(token) = sessions.get(session_id) {
+            token.cancel();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove a completed session
+    pub fn remove_session(&self, session_id: &str) {
+        let mut sessions = self.sessions.lock().unwrap();
+        sessions.remove(session_id);
+    }
+
+    /// Get active session count
+    pub fn active_count(&self) -> usize {
+        self.sessions.lock().unwrap().len()
+    }
+}
+
+impl Default for ScanState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Get category for a file extension
@@ -151,48 +288,68 @@ fn is_metadata_supported(ext: &str) -> bool {
     !matches!(get_metadata_capability(ext), MetadataCapability::None)
 }
 
-/// Scan a folder and return information about all files within it
-///
-/// Command name: scan_folder (snake_case per architecture)
-#[tauri::command]
-pub async fn scan_folder(
-    path: String,
-    options: Option<ScanOptions>,
-) -> Result<ScanResult, ScanError> {
-    let folder_path = Path::new(&path);
-    let options = options.unwrap_or_default();
+/// Internal scan implementation with optional progress reporting and cancellation
+fn scan_folder_internal(
+    path: &str,
+    options: &ScanOptions,
+    cancel_token: Option<&CancellationToken>,
+    progress_callback: Option<&dyn Fn(usize, &str)>,
+) -> Result<(Vec<FileInfo>, u64, bool), ScanError> {
+    let folder_path = Path::new(path);
 
     // Validate path exists
     if !folder_path.exists() {
-        return Err(ScanError::PathNotFound(path));
+        return Err(ScanError::PathNotFound(path.to_string()));
     }
 
     // Validate it's a directory
     if !folder_path.is_dir() {
-        return Err(ScanError::NotADirectory(path));
+        return Err(ScanError::NotADirectory(path.to_string()));
     }
 
     let mut files = Vec::new();
     let mut total_size: u64 = 0;
+    let mut discovered: usize = 0;
 
     // Configure walkdir based on recursive option
     let walker = if options.recursive {
-        WalkDir::new(&path)
+        WalkDir::new(path)
     } else {
-        WalkDir::new(&path).max_depth(1)
+        WalkDir::new(path).max_depth(1)
     };
 
     // Normalize extensions to lowercase for comparison
     let extensions: Option<Vec<String>> = options
         .extensions
+        .as_ref()
         .map(|exts| exts.iter().map(|e| e.to_lowercase()).collect());
 
     for entry in walker.into_iter().filter_map(|e| e.ok()) {
+        // Check for cancellation
+        if let Some(token) = cancel_token {
+            if token.is_cancelled() {
+                return Ok((files, total_size, true)); // true = cancelled
+            }
+        }
+
         let entry_path = entry.path();
 
         // Skip directories
         if entry_path.is_dir() {
             continue;
+        }
+
+        discovered += 1;
+
+        // Report progress every 10 files or for the first file
+        if let Some(callback) = progress_callback {
+            if discovered == 1 || discovered % 10 == 0 {
+                let file_name = entry_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                callback(discovered, file_name);
+            }
         }
 
         // Get file metadata
@@ -232,7 +389,7 @@ pub async fn scan_folder(
             .to_string();
 
         let relative_path = entry_path
-            .strip_prefix(&path)
+            .strip_prefix(path)
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| file_name.clone());
 
@@ -269,13 +426,140 @@ pub async fn scan_folder(
         });
     }
 
+    Ok((files, total_size, false)) // false = not cancelled
+}
+
+/// Scan a folder and return information about all files within it
+///
+/// Command name: scan_folder (snake_case per architecture)
+#[tauri::command]
+pub async fn scan_folder(
+    path: String,
+    options: Option<ScanOptions>,
+) -> Result<ScanResult, ScanError> {
+    let options = options.unwrap_or_default();
+    let (files, total_size, cancelled) = scan_folder_internal(&path, &options, None, None)?;
     let total_count = files.len();
 
     Ok(ScanResult {
         files,
         total_count,
         total_size,
+        session_id: None,
+        cancelled,
     })
+}
+
+/// Scan a folder with progress reporting and cancellation support
+///
+/// Emits "scan-progress" events to the window during the scan
+/// Returns a session_id that can be used to cancel the scan
+///
+/// Command name: scan_folder_with_progress (snake_case per architecture)
+#[tauri::command]
+pub async fn scan_folder_with_progress(
+    window: tauri::Window,
+    scan_state: tauri::State<'_, ScanState>,
+    path: String,
+    options: Option<ScanOptions>,
+) -> Result<ScanResult, ScanError> {
+    let options = options.unwrap_or_default();
+
+    // Create a scan session
+    let (session_id, cancel_token) = scan_state.create_session();
+
+    // Emit starting progress
+    let _ = window.emit("scan-progress", ScanProgress {
+        session_id: session_id.clone(),
+        current_file: String::new(),
+        discovered: 0,
+        processed: 0,
+        phase: ScanPhase::Starting,
+        complete: false,
+        error: None,
+    });
+
+    // Create a channel for progress updates
+    let window_clone = window.clone();
+    let session_id_clone = session_id.clone();
+
+    // Run the scan with progress callback
+    let progress_callback = |discovered: usize, current_file: &str| {
+        let _ = window_clone.emit("scan-progress", ScanProgress {
+            session_id: session_id_clone.clone(),
+            current_file: current_file.to_string(),
+            discovered,
+            processed: 0, // Will be updated at the end
+            phase: ScanPhase::Discovering,
+            complete: false,
+            error: None,
+        });
+    };
+
+    let result = scan_folder_internal(&path, &options, Some(&cancel_token), Some(&progress_callback));
+
+    // Clean up session
+    scan_state.remove_session(&session_id);
+
+    match result {
+        Ok((files, total_size, cancelled)) => {
+            let total_count = files.len();
+
+            // Emit completion progress
+            let _ = window.emit("scan-progress", ScanProgress {
+                session_id: session_id.clone(),
+                current_file: String::new(),
+                discovered: total_count,
+                processed: total_count,
+                phase: if cancelled { ScanPhase::Cancelled } else { ScanPhase::Complete },
+                complete: true,
+                error: None,
+            });
+
+            Ok(ScanResult {
+                files,
+                total_count,
+                total_size,
+                session_id: Some(session_id),
+                cancelled,
+            })
+        }
+        Err(e) => {
+            // Emit error progress
+            let _ = window.emit("scan-progress", ScanProgress {
+                session_id: session_id.clone(),
+                current_file: String::new(),
+                discovered: 0,
+                processed: 0,
+                phase: ScanPhase::Complete,
+                complete: true,
+                error: Some(e.to_string()),
+            });
+
+            Err(e)
+        }
+    }
+}
+
+/// Cancel an active scan session
+///
+/// Command name: cancel_scan (snake_case per architecture)
+#[tauri::command]
+pub async fn cancel_scan(
+    scan_state: tauri::State<'_, ScanState>,
+    session_id: String,
+) -> Result<bool, String> {
+    Ok(scan_state.cancel_session(&session_id))
+}
+
+/// Get the number of active scan sessions
+///
+/// Command name: get_active_scans (snake_case per architecture)
+#[tauri::command]
+pub async fn get_active_scans(
+    scan_state: tauri::State<'_, ScanState>,
+) -> Result<usize, String> {
+    Ok(scan_state.active_count())
 }
 
 #[cfg(test)]
@@ -367,5 +651,128 @@ mod tests {
         assert_eq!(get_category_for_extension("PDF"), FileCategory::Document);
         assert_eq!(get_category_for_extension("rs"), FileCategory::Code);
         assert_eq!(get_category_for_extension("xyz"), FileCategory::Other);
+    }
+
+    // =============================================================================
+    // Cancellation Tests
+    // =============================================================================
+
+    #[test]
+    fn test_cancellation_token_default() {
+        let token = CancellationToken::new();
+        assert!(!token.is_cancelled());
+    }
+
+    #[test]
+    fn test_cancellation_token_cancel() {
+        let token = CancellationToken::new();
+        assert!(!token.is_cancelled());
+
+        token.cancel();
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn test_cancellation_token_clone() {
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+
+        // Cancel original
+        token.cancel();
+
+        // Clone should also be cancelled (shared atomic)
+        assert!(token_clone.is_cancelled());
+    }
+
+    #[test]
+    fn test_scan_state_create_session() {
+        let state = ScanState::new();
+        assert_eq!(state.active_count(), 0);
+
+        let (session_id, _token) = state.create_session();
+        assert!(!session_id.is_empty());
+        assert_eq!(state.active_count(), 1);
+    }
+
+    #[test]
+    fn test_scan_state_cancel_session() {
+        let state = ScanState::new();
+        let (session_id, token) = state.create_session();
+
+        assert!(!token.is_cancelled());
+
+        let cancelled = state.cancel_session(&session_id);
+        assert!(cancelled);
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn test_scan_state_cancel_nonexistent_session() {
+        let state = ScanState::new();
+        let cancelled = state.cancel_session("nonexistent-id");
+        assert!(!cancelled);
+    }
+
+    #[test]
+    fn test_scan_state_remove_session() {
+        let state = ScanState::new();
+        let (session_id, _token) = state.create_session();
+        assert_eq!(state.active_count(), 1);
+
+        state.remove_session(&session_id);
+        assert_eq!(state.active_count(), 0);
+    }
+
+    #[test]
+    fn test_scan_internal_with_cancellation() {
+        let dir = TempDir::new().unwrap();
+        create_test_files(&dir).unwrap();
+
+        // Test without cancellation
+        let token = CancellationToken::new();
+        let (files, _size, cancelled) = scan_folder_internal(
+            &dir.path().to_string_lossy(),
+            &ScanOptions::default(),
+            Some(&token),
+            None,
+        ).unwrap();
+
+        assert!(!cancelled);
+        assert_eq!(files.len(), 3);
+    }
+
+    #[test]
+    fn test_scan_internal_cancelled() {
+        let dir = TempDir::new().unwrap();
+        create_test_files(&dir).unwrap();
+
+        // Test with pre-cancelled token
+        let token = CancellationToken::new();
+        token.cancel();
+
+        let (files, _size, cancelled) = scan_folder_internal(
+            &dir.path().to_string_lossy(),
+            &ScanOptions::default(),
+            Some(&token),
+            None,
+        ).unwrap();
+
+        assert!(cancelled);
+        assert_eq!(files.len(), 0); // Should be empty since cancelled immediately
+    }
+
+    #[test]
+    fn test_scan_result_has_cancelled_field() {
+        let dir = TempDir::new().unwrap();
+        create_test_files(&dir).unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(scan_folder(
+            dir.path().to_string_lossy().to_string(),
+            None,
+        )).unwrap();
+
+        assert!(!result.cancelled);
+        assert!(result.session_id.is_none()); // Basic scan_folder doesn't have session
     }
 }

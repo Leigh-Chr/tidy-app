@@ -17,5 +17,5 @@ pub use history::{
 };
 pub use llm::{analyze_files_with_llm, check_ollama_health, check_openai_health, clear_analysis_cache, get_cache_stats, list_ollama_models, list_openai_models};
 pub use rename::{execute_rename, generate_preview};
-pub use scanner::scan_folder;
+pub use scanner::{cancel_scan, get_active_scans, scan_folder, scan_folder_with_progress, ScanState};
 pub use version::get_version;
