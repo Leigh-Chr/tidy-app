@@ -82,6 +82,13 @@ export function removeRecentFolder(path: string): void {
 }
 
 /**
+ * Clear all recent folders
+ */
+export function clearAllRecentFolders(): void {
+  saveRecentFolders([]);
+}
+
+/**
  * Get folder name from path
  */
 function getFolderName(path: string): string {
@@ -142,15 +149,32 @@ export function RecentFolders({
     setFolders(loadRecentFolders());
   }, []);
 
+  const handleClearAll = useCallback(() => {
+    clearAllRecentFolders();
+    setFolders([]);
+  }, []);
+
   if (displayFolders.length === 0) {
     return null;
   }
 
   return (
     <div className={cn("space-y-2", className)} data-testid="recent-folders">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Clock className="h-4 w-4" />
-        <span>Recent folders</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Clock className="h-4 w-4" />
+          <span>Recent folders</span>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 text-xs text-muted-foreground hover:text-foreground"
+          onClick={handleClearAll}
+          aria-label="Clear all recent folders"
+          data-testid="clear-all-recent-folders"
+        >
+          Clear all
+        </Button>
       </div>
       <div className="space-y-1">
         {displayFolders.map((folder) => (

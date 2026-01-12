@@ -4,8 +4,10 @@
  * Provides search, sort, and filter controls for the preview table.
  */
 
+import { useState, useEffect } from "react";
 import { Search, ArrowUpDown, Filter } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useDebouncedCallback } from "@/hooks/useDebounce";
 import {
   Select,
   SelectContent,
@@ -71,6 +73,27 @@ export function PreviewToolbar({
   disabled = false,
   className,
 }: PreviewToolbarProps) {
+  // Local state for immediate input feedback
+  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+
+  // Sync local state when external searchQuery changes
+  useEffect(() => {
+    setLocalSearchQuery(searchQuery);
+  }, [searchQuery]);
+
+  // Debounced callback to avoid filtering on every keystroke
+  const debouncedSearchChange = useDebouncedCallback(
+    (query: string) => {
+      onSearchChange(query);
+    },
+    150
+  );
+
+  const handleSearchChange = (value: string) => {
+    setLocalSearchQuery(value);
+    debouncedSearchChange(value);
+  };
+
   const handleSortFieldChange = (value: string) => {
     onSortChange(value as SortField, sortDirection);
   };
@@ -95,8 +118,8 @@ export function PreviewToolbar({
         <Input
           type="search"
           placeholder="Search files..."
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
+          value={localSearchQuery}
+          onChange={(e) => handleSearchChange(e.target.value)}
           disabled={disabled}
           className="pl-9 h-9 w-full sm:max-w-xs"
           data-testid="preview-search"

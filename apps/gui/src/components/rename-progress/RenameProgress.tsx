@@ -87,13 +87,13 @@ export function RenameProgress({
       <div className="flex items-start gap-4">
         {/* Status Icon */}
         {isFullSuccess && (
-          <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0" />
+          <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400 flex-shrink-0" />
         )}
         {isPartialSuccess && (
-          <AlertCircle className="h-6 w-6 text-yellow-600 flex-shrink-0" />
+          <AlertCircle className="h-6 w-6 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
         )}
         {isFullFailure && (
-          <XCircle className="h-6 w-6 text-red-600 flex-shrink-0" />
+          <XCircle className="h-6 w-6 text-red-600 dark:text-red-400 flex-shrink-0" />
         )}
 
         {/* Content */}
@@ -120,7 +120,7 @@ export function RenameProgress({
           >
             {result.summary.succeeded} file{result.summary.succeeded !== 1 ? "s" : ""} renamed
             {result.summary.failed > 0 && (
-              <span className="text-red-600">
+              <span className="text-red-600 dark:text-red-400">
                 , {result.summary.failed} failed
               </span>
             )}
@@ -135,15 +135,15 @@ export function RenameProgress({
           {/* Error Details */}
           {result.summary.failed > 0 && (
             <div className="mt-2" data-testid="rename-result-errors">
-              <p className="text-sm font-medium text-red-700 mb-1">Failed files:</p>
+              <p className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">Failed files:</p>
               <ul className="text-xs space-y-1 max-h-32 overflow-auto">
                 {result.results
                   .filter((r) => r.outcome === "failed")
                   .map((r) => (
-                    <li key={r.proposalId} className="text-red-600">
+                    <li key={r.proposalId} className="text-red-600 dark:text-red-400">
                       <span className="font-mono">{r.originalName}</span>
                       {r.error && (
-                        <span className="text-red-500 ml-1">- {r.error}</span>
+                        <span className="text-red-500 dark:text-red-400 ml-1">- {r.error}</span>
                       )}
                     </li>
                   ))}
@@ -159,7 +159,7 @@ export function RenameProgress({
               variant="outline"
               size="sm"
               onClick={onUndo}
-              className="text-green-700 border-green-300 hover:bg-green-100"
+              className="text-green-700 dark:text-green-300 border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900"
               data-testid="rename-result-undo"
             >
               <Undo2 className="h-4 w-4 mr-1" />

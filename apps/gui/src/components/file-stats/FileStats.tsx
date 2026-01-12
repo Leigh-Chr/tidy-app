@@ -23,14 +23,14 @@ interface CategoryConfig {
 
 /** Category configuration map */
 const CATEGORY_CONFIG: Record<FileCategory, CategoryConfig> = {
-  image: { label: "Images", color: "bg-blue-500/10 text-blue-600" },
-  document: { label: "Documents", color: "bg-amber-500/10 text-amber-600" },
-  video: { label: "Videos", color: "bg-purple-500/10 text-purple-600" },
-  audio: { label: "Audio", color: "bg-green-500/10 text-green-600" },
-  archive: { label: "Archives", color: "bg-slate-500/10 text-slate-600" },
-  code: { label: "Code", color: "bg-cyan-500/10 text-cyan-600" },
-  data: { label: "Data", color: "bg-orange-500/10 text-orange-600" },
-  other: { label: "Other", color: "bg-gray-500/10 text-gray-600" },
+  image: { label: "Images", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+  document: { label: "Documents", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+  video: { label: "Videos", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400" },
+  audio: { label: "Audio", color: "bg-green-500/10 text-green-600 dark:text-green-400" },
+  archive: { label: "Archives", color: "bg-slate-500/10 text-slate-600 dark:text-slate-400" },
+  code: { label: "Code", color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400" },
+  data: { label: "Data", color: "bg-orange-500/10 text-orange-600 dark:text-orange-400" },
+  other: { label: "Other", color: "bg-gray-500/10 text-gray-600 dark:text-gray-400" },
 };
 
 export interface FileStatsProps {
@@ -139,7 +139,7 @@ export function FileStats({
               {sortedCategories.map(([category, count]) => {
                 const config = CATEGORY_CONFIG[category as FileCategory] || {
                   label: category,
-                  color: "bg-gray-500/10 text-gray-600",
+                  color: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
                 };
                 return (
                   <Badge
