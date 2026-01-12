@@ -36,15 +36,15 @@ const BUILT_IN_TEMPLATES: Omit<SavedTemplate, 'createdAt' | 'updatedAt'>[] = [
   {
     id: '00000000-0000-0000-0000-000000000001',
     name: 'Date Prefix',
-    pattern: '{date}-{original}',
-    description: 'Adds date prefix to original filename',
+    pattern: '{date}-{name}',
+    description: 'Adds date prefix to filename (uses AI suggestion if available)',
     isBuiltIn: true,
   },
   {
     id: '00000000-0000-0000-0000-000000000002',
     name: 'Photo Organizer',
-    pattern: '{year}-{month}-{day}_{camera}_{original}',
-    description: 'Organizes photos by date and camera',
+    pattern: '{year}-{month}-{day}_{camera}_{name}',
+    description: 'Organizes photos by date and camera (uses AI suggestion if available)',
     isBuiltIn: true,
   },
   {
