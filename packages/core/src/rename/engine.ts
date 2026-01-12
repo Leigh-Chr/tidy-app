@@ -360,28 +360,11 @@ export async function executeBatchRename(
     }
 
     return ok(batchResult);
-  } catch {
-    const completedAt = new Date();
-    const batchResult: BatchRenameResult = {
-      success: false,
-      results,
-      summary: calculateSummary(results, directoriesCreated.length),
-      startedAt,
-      completedAt,
-      durationMs: completedAt.getTime() - startedAt.getTime(),
-      aborted,
-      directoriesCreated,
-    };
-
-    // Story 9.1: Record operation to history even on error
-    if (recordHistory) {
-      const historyResult = await recordOperation(batchResult);
-      if (historyResult.ok) {
-        batchResult.historyEntryId = historyResult.data.id;
-      }
-    }
-
-    return ok(batchResult);
+  } catch (error) {
+    // Unexpected error during batch operation - propagate as error Result
+    // Note: Individual file failures are captured in results array, not here
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return err(new Error(`Batch rename failed unexpectedly: ${errorMessage}`));
   }
 }
 

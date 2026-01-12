@@ -997,6 +997,8 @@ export interface BatchAnalysisResult {
   skipped: number;
   /** Whether LLM was available */
   llmAvailable: boolean;
+  /** Internal: true if analysis was skipped because template doesn't use AI placeholders */
+  _templateSkipped?: boolean;
 }
 
 /** Analysis progress event payload */

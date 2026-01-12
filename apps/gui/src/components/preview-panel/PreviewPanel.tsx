@@ -166,8 +166,8 @@ export function PreviewPanel() {
       if (filteredFiles.length > 0 && config && selectedTemplateId) {
         const template = config.templates.find((t) => t.id === selectedTemplateId);
         if (template) {
-          // Defer the regeneration to let the state update first
-          setTimeout(() => void generatePreview(filteredFiles, template.pattern), 0);
+          // Defer regeneration to microtask queue to let state update first
+          queueMicrotask(() => void generatePreview(filteredFiles, template.pattern));
         }
       }
     },
@@ -184,8 +184,8 @@ export function PreviewPanel() {
       if (filteredFiles.length > 0 && config && selectedTemplateId) {
         const template = config.templates.find((t) => t.id === selectedTemplateId);
         if (template) {
-          // Defer the regeneration to let the state update first
-          setTimeout(() => void generatePreview(filteredFiles, template.pattern), 0);
+          // Defer regeneration to microtask queue to let state update first
+          queueMicrotask(() => void generatePreview(filteredFiles, template.pattern));
         }
       }
     },

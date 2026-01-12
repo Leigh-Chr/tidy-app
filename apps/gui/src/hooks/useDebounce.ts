@@ -38,11 +38,12 @@ export function useDebouncedValue<T>(value: T, delay: number = 150): T {
  * @param delay - Delay in milliseconds (default: 150ms)
  * @returns A debounced version of the callback
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function useDebouncedCallback<T extends (...args: any[]) => void>(
-  callback: T,
+// Using Parameters<F> as a self-referential constraint allows proper type inference
+// while maintaining type safety (better than any[])
+export function useDebouncedCallback<F extends (...args: Parameters<F>) => void>(
+  callback: F,
   delay: number = 150
-): T {
+): F {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callbackRef = useRef(callback);
 
@@ -61,7 +62,7 @@ export function useDebouncedCallback<T extends (...args: any[]) => void>(
   }, []);
 
   const debouncedCallback = useCallback(
-    (...args: Parameters<T>) => {
+    (...args: Parameters<F>) => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
@@ -71,7 +72,7 @@ export function useDebouncedCallback<T extends (...args: any[]) => void>(
       }, delay);
     },
     [delay]
-  ) as T;
+  ) as F;
 
   return debouncedCallback;
 }
