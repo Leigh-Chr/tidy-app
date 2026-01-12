@@ -16,8 +16,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppStore, type Preferences } from "@/stores/app-store";
+import { useAppStore, type Preferences, type CaseStyle } from "@/stores/app-store";
 import type { OutputFormat } from "@/lib/tauri";
+
+/** Case style options with labels and descriptions */
+const CASE_STYLE_OPTIONS: Array<{ value: CaseStyle; label: string; example: string }> = [
+  { value: "kebab-case", label: "kebab-case", example: "my-vacation-photos" },
+  { value: "snake_case", label: "snake_case", example: "my_vacation_photos" },
+  { value: "none", label: "None", example: "My Vacation Photos" },
+  { value: "lowercase", label: "lowercase", example: "my vacation photos" },
+  { value: "uppercase", label: "UPPERCASE", example: "MY VACATION PHOTOS" },
+  { value: "title-case", label: "Title Case", example: "My Vacation Photos" },
+  { value: "camelCase", label: "camelCase", example: "myVacationPhotos" },
+  { value: "PascalCase", label: "PascalCase", example: "MyVacationPhotos" },
+];
 
 export interface PreferencesPanelProps {
   /** Current preferences */
@@ -47,6 +59,15 @@ export function PreferencesPanel({ preferences }: PreferencesPanelProps) {
     }
   };
 
+  const handleCaseStyleChange = async (value: CaseStyle) => {
+    const result = await updatePreferences({ caseNormalization: value });
+    if (result.ok) {
+      toast.success("Preferences saved");
+    } else {
+      toast.error("Failed to save preferences");
+    }
+  };
+
   return (
     <div className="space-y-6" data-testid="preferences-panel">
       {/* Output Format */}
@@ -69,6 +90,35 @@ export function PreferencesPanel({ preferences }: PreferencesPanelProps) {
             <SelectItem value="table">Table</SelectItem>
             <SelectItem value="json">JSON</SelectItem>
             <SelectItem value="plain">Plain</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Filename Case Style */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <Label htmlFor="case-style">Filename Style</Label>
+          <p className="text-sm text-muted-foreground">
+            How filenames are formatted
+          </p>
+        </div>
+        <Select
+          value={preferences.caseNormalization}
+          onValueChange={handleCaseStyleChange}
+          disabled={isSaving}
+        >
+          <SelectTrigger className="w-[140px]" data-testid="case-style-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CASE_STYLE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <div className="flex flex-col">
+                  <span>{option.label}</span>
+                  <span className="text-xs text-muted-foreground">{option.example}</span>
+                </div>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

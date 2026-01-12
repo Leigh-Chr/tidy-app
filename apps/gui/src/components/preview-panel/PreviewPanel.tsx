@@ -5,18 +5,19 @@
  * action bar, confirmation dialog, progress display, and AI analysis.
  *
  * Story 6.4 - Task 10: Main integration component
+ * Enhanced with reorganization mode support for folder organization.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useAppStore } from "@/stores/app-store";
-import type { RenameStatus } from "@/lib/tauri";
+import type { RenameStatus, OrganizeOptions } from "@/lib/tauri";
 import { PreviewTable } from "@/components/preview-table/PreviewTable";
 import { ActionBar } from "@/components/action-bar/ActionBar";
 import { ConfirmRename } from "@/components/confirm-rename/ConfirmRename";
 import { RenameProgress } from "@/components/rename-progress/RenameProgress";
 import { TemplateSelector } from "@/components/template-selector/TemplateSelector";
-import { FolderStructureSelector } from "@/components/folder-structure-selector";
+import { ReorganizationModeSelector } from "@/components/reorganization-mode/ReorganizationModeSelector";
 import { AiAnalysisBar } from "@/components/ai-analysis";
 
 export function PreviewPanel() {
@@ -24,6 +25,7 @@ export function PreviewPanel() {
     config,
     loadConfig,
     scanResult,
+    selectedFolder,
     preview,
     previewStatus,
     previewError,
@@ -40,6 +42,10 @@ export function PreviewPanel() {
     scanOptions,
     selectedFolderStructureId,
     setSelectedFolderStructure,
+    reorganizationMode,
+    organizeOptions,
+    setReorganizationMode,
+    setOrganizeOptions,
   } = useAppStore();
 
   // Local state
@@ -112,6 +118,22 @@ export function PreviewPanel() {
     (structureId: string | null) => {
       setSelectedFolderStructure(structureId);
 
+      // If selecting a structure, switch to organize mode
+      if (structureId && config) {
+        const structure = config.folderStructures.find(
+          (s) => s.id === structureId && s.enabled
+        );
+        if (structure) {
+          setReorganizationMode("organize");
+          setOrganizeOptions({
+            folderPattern: structure.pattern,
+            destinationDirectory: selectedFolder ?? undefined,
+            preserveContext: false,
+            contextDepth: 1,
+          });
+        }
+      }
+
       // Regenerate preview with new folder structure
       const filteredFiles = getFilteredFiles();
       if (filteredFiles.length > 0 && config && selectedTemplateId) {
@@ -121,7 +143,43 @@ export function PreviewPanel() {
         }
       }
     },
-    [config, selectedTemplateId, generatePreview, getFilteredFiles, setSelectedFolderStructure]
+    [config, selectedTemplateId, selectedFolder, generatePreview, getFilteredFiles, setSelectedFolderStructure, setReorganizationMode, setOrganizeOptions]
+  );
+
+  // Handle reorganization mode change
+  const handleModeChange = useCallback(
+    (mode: "rename-only" | "organize") => {
+      setReorganizationMode(mode);
+
+      // Regenerate preview with new mode
+      const filteredFiles = getFilteredFiles();
+      if (filteredFiles.length > 0 && config && selectedTemplateId) {
+        const template = config.templates.find((t) => t.id === selectedTemplateId);
+        if (template) {
+          // Defer the regeneration to let the state update first
+          setTimeout(() => void generatePreview(filteredFiles, template.pattern), 0);
+        }
+      }
+    },
+    [config, selectedTemplateId, generatePreview, getFilteredFiles, setReorganizationMode]
+  );
+
+  // Handle organize options change
+  const handleOrganizeOptionsChange = useCallback(
+    (options: OrganizeOptions) => {
+      setOrganizeOptions(options);
+
+      // Regenerate preview with new options
+      const filteredFiles = getFilteredFiles();
+      if (filteredFiles.length > 0 && config && selectedTemplateId) {
+        const template = config.templates.find((t) => t.id === selectedTemplateId);
+        if (template) {
+          // Defer the regeneration to let the state update first
+          setTimeout(() => void generatePreview(filteredFiles, template.pattern), 0);
+        }
+      }
+    },
+    [config, selectedTemplateId, generatePreview, getFilteredFiles, setOrganizeOptions]
   );
 
   // Toggle collapsed state for a status group
@@ -210,9 +268,10 @@ export function PreviewPanel() {
 
   return (
     <div className="flex flex-col gap-4" data-testid="preview-panel">
-      {/* Template and Folder Structure Selectors */}
+      {/* Template Selector and Reorganization Mode */}
       {config && (
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col gap-4">
+          {/* Template Selector Row */}
           {config.templates.length > 0 && (
             <TemplateSelector
               templates={config.templates}
@@ -221,14 +280,19 @@ export function PreviewPanel() {
               disabled={isApplying}
             />
           )}
-          {config.folderStructures && config.folderStructures.length > 0 && (
-            <FolderStructureSelector
-              structures={config.folderStructures}
-              selectedId={selectedFolderStructureId}
-              onSelect={handleFolderStructureChange}
-              disabled={isApplying}
-            />
-          )}
+
+          {/* Reorganization Mode Selector */}
+          <ReorganizationModeSelector
+            mode={reorganizationMode}
+            onModeChange={handleModeChange}
+            organizeOptions={organizeOptions ?? undefined}
+            onOrganizeOptionsChange={handleOrganizeOptionsChange}
+            folderStructures={config.folderStructures ?? []}
+            selectedStructureId={selectedFolderStructureId}
+            onStructureSelect={handleFolderStructureChange}
+            baseDirectory={selectedFolder ?? undefined}
+            disabled={isApplying}
+          />
         </div>
       )}
 
@@ -269,6 +333,8 @@ export function PreviewPanel() {
       {!lastRenameResult && (
         <ActionBar
           summary={preview.summary}
+          actionSummary={preview.actionSummary}
+          reorganizationMode={reorganizationMode}
           selectedCount={selectedCount}
           hasApplied={hasApplied}
           isApplying={isApplying}

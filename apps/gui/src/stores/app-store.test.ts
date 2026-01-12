@@ -185,6 +185,7 @@ describe("useAppStore", () => {
       colorOutput: true,
       confirmBeforeApply: true,
       recursiveScan: false,
+      caseNormalization: "kebab-case" as const,
     },
     recentFolders: [],
     ollama: {

@@ -53,6 +53,88 @@ pub enum RenameStatus {
     InvalidName,
 }
 
+/// Reorganization mode determines how files are handled during rename operations.
+///
+/// - 'rename-only': Files stay in their current locations, only names change (safest)
+/// - 'organize': Files are moved to new locations based on folder patterns
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReorganizationMode {
+    /// Files stay in place, only names change (default, safest option)
+    #[default]
+    RenameOnly,
+    /// Files are moved to new structure based on folder pattern
+    Organize,
+}
+
+/// Options for the "organize" mode.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeOptions {
+    /// Base destination directory for organized files.
+    #[serde(default)]
+    pub destination_directory: Option<String>,
+
+    /// Folder pattern for organizing files (e.g., "{year}/{month}").
+    pub folder_pattern: String,
+
+    /// Whether to preserve the relative context from subfolders.
+    #[serde(default)]
+    pub preserve_context: bool,
+
+    /// How many levels of parent folders to preserve when preserve_context is true.
+    #[serde(default = "default_context_depth")]
+    pub context_depth: i32,
+}
+
+fn default_context_depth() -> i32 {
+    1
+}
+
+/// Action type for a file in the preview.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum FileActionType {
+    /// File will only be renamed (stays in same folder)
+    Rename,
+    /// File will be moved to a different folder (may also be renamed)
+    Move,
+    /// File will not change
+    NoChange,
+    /// File has a conflict
+    Conflict,
+    /// File has an error
+    Error,
+}
+
+/// Conflict information for a file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileConflict {
+    /// The type of conflict
+    #[serde(rename = "type")]
+    pub conflict_type: String,
+    /// Human-readable description
+    pub message: String,
+    /// ID of the conflicting file (for duplicate-name conflicts)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conflicting_file_id: Option<String>,
+    /// Path of the existing file (for file-exists conflicts)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub existing_file_path: Option<String>,
+}
+
+/// Summary of preview actions by type.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewActionSummary {
+    pub rename_count: usize,
+    pub move_count: usize,
+    pub no_change_count: usize,
+    pub conflict_count: usize,
+    pub error_count: usize,
+}
+
 /// Issue found with a rename proposal
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -93,6 +175,16 @@ pub struct RenameProposal {
     /// The destination folder path (if is_folder_move is true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination_folder: Option<String>,
+    /// Action type for this proposal (rename, move, no-change, conflict, error)
+    #[serde(default = "default_action_type")]
+    pub action_type: FileActionType,
+    /// Conflict details if status is Conflict
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conflict: Option<FileConflict>,
+}
+
+fn default_action_type() -> FileActionType {
+    FileActionType::Rename
 }
 
 /// Summary statistics for a rename preview
@@ -119,6 +211,12 @@ pub struct RenamePreview {
     pub generated_at: DateTime<Utc>,
     /// Template pattern used
     pub template_used: String,
+    /// Action summary by type (rename vs move vs no-change etc.)
+    #[serde(default)]
+    pub action_summary: PreviewActionSummary,
+    /// The reorganization mode used for this preview
+    #[serde(default)]
+    pub reorganization_mode: ReorganizationMode,
 }
 
 /// Outcome of a single file rename
@@ -180,11 +278,20 @@ pub struct GeneratePreviewOptions {
     #[serde(default)]
     pub date_format: Option<String>,
     /// Folder structure pattern for organizing files (e.g., "{year}/{month}")
+    /// DEPRECATED: Use reorganization_mode and organize_options instead
     #[serde(default)]
     pub folder_pattern: Option<String>,
     /// Base directory for folder organization (destination root)
+    /// DEPRECATED: Use reorganization_mode and organize_options instead
     #[serde(default)]
     pub base_directory: Option<String>,
+    /// Reorganization mode: 'rename-only' or 'organize'
+    /// Default: 'rename-only' (safest - files stay in place)
+    #[serde(default)]
+    pub reorganization_mode: ReorganizationMode,
+    /// Options for organize mode (required when reorganization_mode is 'organize')
+    #[serde(default)]
+    pub organize_options: Option<OrganizeOptions>,
 }
 
 /// Options for executing renames
@@ -368,8 +475,39 @@ pub async fn generate_preview(
 ) -> Result<RenamePreview, RenameError> {
     let options = options.unwrap_or_default();
     let date_format = options.date_format.as_deref().unwrap_or("YYYY-MM-DD");
-    let folder_pattern = options.folder_pattern.as_deref();
-    let base_directory = options.base_directory.as_deref();
+
+    // Determine reorganization mode and settings
+    // Support both new API (reorganization_mode + organize_options) and legacy API (folder_pattern + base_directory)
+    let (reorg_mode, folder_pattern, base_directory) = match &options.reorganization_mode {
+        ReorganizationMode::Organize => {
+            if let Some(ref org_opts) = options.organize_options {
+                (
+                    ReorganizationMode::Organize,
+                    Some(org_opts.folder_pattern.as_str()),
+                    org_opts.destination_directory.as_deref(),
+                )
+            } else {
+                // Organize mode but no options - fall back to legacy
+                (
+                    if options.folder_pattern.is_some() { ReorganizationMode::Organize } else { ReorganizationMode::RenameOnly },
+                    options.folder_pattern.as_deref(),
+                    options.base_directory.as_deref(),
+                )
+            }
+        }
+        ReorganizationMode::RenameOnly => {
+            // Check if legacy folder_pattern is provided (backward compatibility)
+            if options.folder_pattern.is_some() {
+                (
+                    ReorganizationMode::Organize,
+                    options.folder_pattern.as_deref(),
+                    options.base_directory.as_deref(),
+                )
+            } else {
+                (ReorganizationMode::RenameOnly, None, None)
+            }
+        }
+    };
 
     let mut proposals: Vec<RenameProposal> = Vec::new();
     let mut proposed_paths: HashMap<String, Vec<String>> = HashMap::new();
@@ -379,43 +517,55 @@ pub async fn generate_preview(
         let id = Uuid::new_v4().to_string();
         let (proposed_name, metadata_sources) = apply_template(file, &template_pattern, date_format);
 
-        // Determine destination directory
-        let (dest_dir, is_folder_move, destination_folder) = if let Some(pattern) = folder_pattern {
-            // Apply folder pattern
-            let folder_path = apply_folder_pattern(file, pattern);
+        // Determine destination directory based on reorganization mode
+        let (dest_dir, is_folder_move, destination_folder) = match reorg_mode {
+            ReorganizationMode::Organize => {
+                if let Some(pattern) = folder_pattern {
+                    // Apply folder pattern
+                    let folder_path = apply_folder_pattern(file, pattern);
 
-            // Combine with base directory if provided
-            let full_dest = match base_directory {
-                Some(base) => format!("{}/{}", base.trim_end_matches('/'), folder_path),
-                None => {
-                    // Use source directory as base
+                    // Combine with base directory if provided
+                    let full_dest = match base_directory {
+                        Some(base) => format!("{}/{}", base.trim_end_matches('/'), folder_path),
+                        None => {
+                            // Use source directory as base
+                            let source_dir = Path::new(&file.path)
+                                .parent()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            if source_dir.is_empty() {
+                                folder_path.clone()
+                            } else {
+                                format!("{}/{}", source_dir.trim_end_matches('/'), folder_path)
+                            }
+                        }
+                    };
+
+                    // Check if this is actually a move (different from source directory)
                     let source_dir = Path::new(&file.path)
                         .parent()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    if source_dir.is_empty() {
-                        folder_path.clone()
-                    } else {
-                        format!("{}/{}", source_dir.trim_end_matches('/'), folder_path)
-                    }
+
+                    let is_move = full_dest != source_dir;
+                    (full_dest.clone(), is_move, if is_move { Some(folder_path) } else { None })
+                } else {
+                    // No folder pattern - use original directory
+                    let dir = Path::new(&file.path)
+                        .parent()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    (dir, false, None)
                 }
-            };
-
-            // Check if this is actually a move (different from source directory)
-            let source_dir = Path::new(&file.path)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-
-            let is_move = full_dest != source_dir;
-            (full_dest.clone(), is_move, if is_move { Some(folder_path) } else { None })
-        } else {
-            // No folder pattern - use original directory
-            let dir = Path::new(&file.path)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-            (dir, false, None)
+            }
+            ReorganizationMode::RenameOnly => {
+                // Rename only - files stay in their original directories
+                let dir = Path::new(&file.path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                (dir, false, None)
+            }
         };
 
         let proposed_path = if dest_dir.is_empty() {
@@ -426,10 +576,12 @@ pub async fn generate_preview(
 
         let mut issues: Vec<RenameIssue> = Vec::new();
         let mut status = RenameStatus::Ready;
+        let mut action_type = if is_folder_move { FileActionType::Move } else { FileActionType::Rename };
 
         // Check for no change (both name and location)
         if proposed_name == file.full_name && !is_folder_move {
             status = RenameStatus::NoChange;
+            action_type = FileActionType::NoChange;
         }
 
         // Check for invalid filename
@@ -440,6 +592,7 @@ pub async fn generate_preview(
                 field: None,
             });
             status = RenameStatus::InvalidName;
+            action_type = FileActionType::Error;
         }
 
         // Track for conflict detection
@@ -464,20 +617,33 @@ pub async fn generate_preview(
             },
             is_folder_move,
             destination_folder,
+            action_type,
+            conflict: None,
         });
     }
 
-    // Second pass: detect batch conflicts
-    for (_, ids) in &proposed_paths {
+    // Second pass: detect batch conflicts (duplicate names in same destination)
+    for (path_key, ids) in &proposed_paths {
         if ids.len() > 1 {
-            for id in ids {
-                if let Some(proposal) = proposals.iter_mut().find(|p| &p.id == id) {
+            // Find the first file ID to reference in conflict details
+            let first_id = ids.first().cloned();
+
+            for (idx, id) in ids.iter().enumerate() {
+                if let Some(proposal) = proposals.iter_mut().find(|p| p.id == *id) {
                     if proposal.status == RenameStatus::Ready {
                         proposal.status = RenameStatus::Conflict;
+                        proposal.action_type = FileActionType::Conflict;
                         proposal.issues.push(RenameIssue {
                             code: "DUPLICATE_NAME".to_string(),
-                            message: "Another file would have the same name".to_string(),
+                            message: format!("Another file would have the same name ({})", path_key),
                             field: None,
+                        });
+                        // Set conflict details
+                        proposal.conflict = Some(FileConflict {
+                            conflict_type: "duplicate-name".to_string(),
+                            message: "Another file in this batch would have the same name".to_string(),
+                            conflicting_file_id: if idx > 0 { first_id.clone() } else { ids.get(1).cloned() },
+                            existing_file_path: None,
                         });
                     }
                 }
@@ -485,23 +651,30 @@ pub async fn generate_preview(
         }
     }
 
-    // Third pass: check for filesystem conflicts
+    // Third pass: check for filesystem conflicts (file already exists at target)
     for proposal in &mut proposals {
         if proposal.status == RenameStatus::Ready {
             // Check if target already exists (and isn't the source file)
             let target_path = Path::new(&proposal.proposed_path);
             if target_path.exists() && proposal.proposed_path != proposal.original_path {
                 proposal.status = RenameStatus::Conflict;
+                proposal.action_type = FileActionType::Conflict;
                 proposal.issues.push(RenameIssue {
                     code: "FILE_EXISTS".to_string(),
                     message: "A file with this name already exists".to_string(),
                     field: None,
                 });
+                proposal.conflict = Some(FileConflict {
+                    conflict_type: "file-exists".to_string(),
+                    message: "A file already exists at the proposed path".to_string(),
+                    conflicting_file_id: None,
+                    existing_file_path: Some(proposal.proposed_path.clone()),
+                });
             }
         }
     }
 
-    // Calculate summary
+    // Calculate legacy summary (for backward compatibility)
     let summary = PreviewSummary {
         total: proposals.len(),
         ready: proposals.iter().filter(|p| p.status == RenameStatus::Ready).count(),
@@ -511,11 +684,22 @@ pub async fn generate_preview(
         invalid_name: proposals.iter().filter(|p| p.status == RenameStatus::InvalidName).count(),
     };
 
+    // Calculate action summary (new, clearer summary)
+    let action_summary = PreviewActionSummary {
+        rename_count: proposals.iter().filter(|p| p.action_type == FileActionType::Rename).count(),
+        move_count: proposals.iter().filter(|p| p.action_type == FileActionType::Move).count(),
+        no_change_count: proposals.iter().filter(|p| p.action_type == FileActionType::NoChange).count(),
+        conflict_count: proposals.iter().filter(|p| p.action_type == FileActionType::Conflict).count(),
+        error_count: proposals.iter().filter(|p| p.action_type == FileActionType::Error).count(),
+    };
+
     Ok(RenamePreview {
         proposals,
         summary,
         generated_at: Utc::now(),
         template_used: template_pattern,
+        action_summary,
+        reorganization_mode: reorg_mode,
     })
 }
 
@@ -794,6 +978,8 @@ mod tests {
             metadata_sources: None,
             is_folder_move: false,
             destination_folder: None,
+            action_type: FileActionType::Rename,
+            conflict: None,
         };
 
         let result = execute_rename(vec![proposal], None).await.unwrap();
@@ -817,6 +1003,8 @@ mod tests {
             metadata_sources: None,
             is_folder_move: false,
             destination_folder: None,
+            action_type: FileActionType::Conflict,
+            conflict: None,
         };
 
         let result = execute_rename(vec![proposal], None).await.unwrap();
@@ -848,6 +1036,8 @@ mod tests {
                 metadata_sources: None,
                 is_folder_move: false,
                 destination_folder: None,
+                action_type: FileActionType::Rename,
+                conflict: None,
             },
             RenameProposal {
                 id: "id-2".to_string(),
@@ -860,6 +1050,8 @@ mod tests {
                 metadata_sources: None,
                 is_folder_move: false,
                 destination_folder: None,
+                action_type: FileActionType::Rename,
+                conflict: None,
             },
         ];
 

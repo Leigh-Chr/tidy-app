@@ -22,7 +22,9 @@ import type {
   OllamaModel,
   OpenAiConfig,
   OpenAiModel,
+  OrganizeOptions,
   Preferences,
+  ReorganizationMode,
   RenamePreview,
   RenameProposal,
   ScanResult,
@@ -70,7 +72,8 @@ function templateNeedsAi(templatePattern: string): boolean {
 }
 
 // Re-export types for consumers that import from the store
-export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult };
+export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult, ReorganizationMode, OrganizeOptions };
+export type { CaseStyle } from "@/lib/tauri";
 
 export type Result<T, E = Error> =
   | { ok: true; data: T }
@@ -113,6 +116,10 @@ export interface AppState {
 
   // Folder Structure State
   selectedFolderStructureId: string | null;
+
+  // Reorganization State
+  reorganizationMode: ReorganizationMode;
+  organizeOptions: OrganizeOptions | null;
 
   // LLM State
   llmStatus: LlmStatus;
@@ -163,6 +170,10 @@ export interface AppState {
   deleteFolderStructure: (structureId: string) => Promise<Result<void>>;
   getSelectedFolderStructure: () => FolderStructure | null;
 
+  // Reorganization Actions
+  setReorganizationMode: (mode: ReorganizationMode) => void;
+  setOrganizeOptions: (options: OrganizeOptions | null) => void;
+
   // LLM Actions
   checkLlmHealth: () => Promise<Result<HealthStatus>>;
   loadLlmModels: () => Promise<Result<OllamaModel[]>>;
@@ -203,6 +214,9 @@ const initialState = {
   lastRenameResult: null as BatchRenameResult | null,
   // Folder Structure State
   selectedFolderStructureId: null as string | null,
+  // Reorganization State
+  reorganizationMode: "rename-only" as ReorganizationMode,
+  organizeOptions: null as OrganizeOptions | null,
   // LLM State
   llmStatus: "idle" as LlmStatus,
   llmModels: [] as OllamaModel[],
@@ -511,16 +525,40 @@ export const useAppStore = create<AppState>((set) => ({
       selectedProposalIds: new Set<string>(),
     });
     try {
-      // Get selected folder structure pattern if any
-      const { config, selectedFolderStructureId, selectedFolder } = useAppStore.getState();
-      let folderPattern: string | undefined;
+      // Get reorganization settings from state
+      const {
+        config,
+        selectedFolderStructureId,
+        selectedFolder,
+        reorganizationMode,
+        organizeOptions,
+      } = useAppStore.getState();
 
-      if (selectedFolderStructureId && config) {
-        const structure = config.folderStructures.find(
-          (s) => s.id === selectedFolderStructureId && s.enabled
-        );
-        if (structure) {
-          folderPattern = structure.pattern;
+      // Build options for the preview generation
+      // Support both the new reorganizationMode API and legacy folderPattern API
+      let effectiveOrganizeOptions: OrganizeOptions | undefined;
+
+      if (reorganizationMode === "organize") {
+        // Use explicitly set organize options if available
+        if (organizeOptions) {
+          effectiveOrganizeOptions = {
+            ...organizeOptions,
+            destinationDirectory: organizeOptions.destinationDirectory ?? selectedFolder ?? undefined,
+          };
+        }
+        // Or build from selected folder structure
+        else if (selectedFolderStructureId && config) {
+          const structure = config.folderStructures.find(
+            (s) => s.id === selectedFolderStructureId && s.enabled
+          );
+          if (structure) {
+            effectiveOrganizeOptions = {
+              folderPattern: structure.pattern,
+              destinationDirectory: selectedFolder ?? undefined,
+              preserveContext: false,
+              contextDepth: 1,
+            };
+          }
         }
       }
 
@@ -528,8 +566,11 @@ export const useAppStore = create<AppState>((set) => ({
         files,
         templatePattern,
         options: {
-          folderPattern,
-          baseDirectory: selectedFolder ?? undefined,
+          reorganizationMode,
+          organizeOptions: effectiveOrganizeOptions,
+          // Also include legacy fields for backward compatibility
+          folderPattern: effectiveOrganizeOptions?.folderPattern,
+          baseDirectory: effectiveOrganizeOptions?.destinationDirectory ?? selectedFolder ?? undefined,
         },
       });
 
@@ -812,6 +853,31 @@ export const useAppStore = create<AppState>((set) => ({
     const { config, selectedFolderStructureId } = useAppStore.getState();
     if (!config || !selectedFolderStructureId) return null;
     return config.folderStructures.find((s) => s.id === selectedFolderStructureId) ?? null;
+  },
+
+  // ==========================================================================
+  // Reorganization Actions
+  // ==========================================================================
+
+  setReorganizationMode: (mode: ReorganizationMode) => {
+    set({ reorganizationMode: mode });
+
+    // If switching to rename-only, clear organize options and folder structure selection
+    if (mode === "rename-only") {
+      set({
+        organizeOptions: null,
+        selectedFolderStructureId: null,
+      });
+    }
+  },
+
+  setOrganizeOptions: (options: OrganizeOptions | null) => {
+    set({ organizeOptions: options });
+
+    // If setting options, ensure we're in organize mode
+    if (options) {
+      set({ reorganizationMode: "organize" });
+    }
   },
 
   // ==========================================================================

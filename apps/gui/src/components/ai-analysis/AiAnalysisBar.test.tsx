@@ -37,6 +37,7 @@ const mockConfig: AppConfig = {
     colorOutput: true,
     confirmBeforeApply: true,
     recursiveScan: false,
+    caseNormalization: "kebab-case",
   },
   recentFolders: [],
   ollama: {

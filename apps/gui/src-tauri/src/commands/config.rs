@@ -75,6 +75,39 @@ impl Default for OutputFormat {
     }
 }
 
+/// Case normalization style for filenames
+///
+/// Controls how filenames are normalized for consistency.
+/// Default: kebab-case (modern, URL-friendly, widely compatible)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CaseStyle {
+    /// No transformation - keep original casing
+    None,
+    /// all lowercase
+    Lowercase,
+    /// ALL UPPERCASE
+    Uppercase,
+    /// First letter uppercase
+    Capitalize,
+    /// Each Word Capitalized
+    TitleCase,
+    /// words-separated-by-hyphens (RECOMMENDED - default)
+    KebabCase,
+    /// words_separated_by_underscores
+    SnakeCase,
+    /// wordsJoinedWithCamelCase
+    CamelCase,
+    /// WordsJoinedWithPascalCase
+    PascalCase,
+}
+
+impl Default for CaseStyle {
+    fn default() -> Self {
+        CaseStyle::KebabCase
+    }
+}
+
 /// User preferences
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,6 +124,9 @@ pub struct Preferences {
     /// Whether to scan subdirectories
     #[serde(default)]
     pub recursive_scan: bool,
+    /// Case normalization style for filenames (default: kebab-case)
+    #[serde(default)]
+    pub case_normalization: CaseStyle,
 }
 
 fn default_true() -> bool {
@@ -104,6 +140,7 @@ impl Default for Preferences {
             color_output: true,
             confirm_before_apply: true,
             recursive_scan: false,
+            case_normalization: CaseStyle::KebabCase,
         }
     }
 }
@@ -362,12 +399,16 @@ pub struct AppConfig {
 const DEFAULT_TIMESTAMP: &str = "2024-01-01T00:00:00.000Z";
 
 /// Generate default templates
+///
+/// Note: Templates use {name} placeholder which uses AI suggestion if available,
+/// otherwise falls back to original filename. Use {original} to always keep
+/// the original filename, or {ai} for AI-only suggestions.
 fn default_templates() -> Vec<Template> {
     vec![
         Template {
             id: Uuid::new_v4().to_string(),
             name: "Date Prefix".to_string(),
-            pattern: "{date}-{original}".to_string(),
+            pattern: "{date}-{name}".to_string(),
             file_types: Some(vec![
                 "jpg".to_string(),
                 "jpeg".to_string(),
@@ -383,7 +424,7 @@ fn default_templates() -> Vec<Template> {
         Template {
             id: Uuid::new_v4().to_string(),
             name: "Year/Month Folders".to_string(),
-            pattern: "{year}/{month}/{original}".to_string(),
+            pattern: "{year}/{month}/{name}".to_string(),
             file_types: Some(vec![
                 "jpg".to_string(),
                 "jpeg".to_string(),
@@ -399,7 +440,7 @@ fn default_templates() -> Vec<Template> {
         Template {
             id: Uuid::new_v4().to_string(),
             name: "Camera + Date".to_string(),
-            pattern: "{camera}-{date}-{original}".to_string(),
+            pattern: "{camera}-{date}-{name}".to_string(),
             file_types: Some(vec![
                 "jpg".to_string(),
                 "jpeg".to_string(),
@@ -413,7 +454,7 @@ fn default_templates() -> Vec<Template> {
         Template {
             id: Uuid::new_v4().to_string(),
             name: "Document Date".to_string(),
-            pattern: "{date}-{original}".to_string(),
+            pattern: "{date}-{name}".to_string(),
             file_types: Some(vec![
                 "pdf".to_string(),
                 "docx".to_string(),
@@ -640,9 +681,9 @@ mod tests {
         let templates = default_templates();
         assert_eq!(templates.len(), 4);
 
-        // Check first template
+        // Check first template (uses {name} for smart AI/original naming)
         assert_eq!(templates[0].name, "Date Prefix");
-        assert_eq!(templates[0].pattern, "{date}-{original}");
+        assert_eq!(templates[0].pattern, "{date}-{name}");
         assert!(templates[0].is_default);
 
         // Check that only one is default
@@ -657,6 +698,7 @@ mod tests {
         assert!(prefs.color_output);
         assert!(prefs.confirm_before_apply);
         assert!(!prefs.recursive_scan);
+        assert_eq!(prefs.case_normalization, CaseStyle::KebabCase);
     }
 
     #[test]

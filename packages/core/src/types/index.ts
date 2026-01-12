@@ -284,3 +284,31 @@ export {
   createMessageRestoreResult,
   createEmptyFileHistoryLookup,
 } from './restore-result.js';
+
+// Reorganization types (folder organization modes)
+export type {
+  ReorganizationModeType,
+  OrganizeOptions,
+  ReorganizationSettings,
+  FileActionTypeValue,
+  FileConflict,
+  PreviewActionSummary,
+  EmptyFolderInfo,
+  ConflictResolutionType,
+} from './reorganization.js';
+export {
+  ReorganizationMode,
+  reorganizationModeSchema,
+  organizeOptionsSchema,
+  reorganizationSettingsSchema,
+  FileActionType,
+  fileActionTypeSchema,
+  fileConflictSchema,
+  previewActionSummarySchema,
+  emptyFolderInfoSchema,
+  ConflictResolution,
+  conflictResolutionSchema,
+  DEFAULT_REORGANIZATION_SETTINGS,
+  createDefaultOrganizeOptions,
+  validateReorganizationSettings,
+} from './reorganization.js';
