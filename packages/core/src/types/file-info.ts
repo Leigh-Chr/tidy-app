@@ -30,13 +30,15 @@ export const fileInfoSchema = z.object({
   relativePath: z.string().optional(),
   /** MIME type (e.g., "image/jpeg") */
   mimeType: z.string().optional(),
-  /** File category (image, document, pdf, etc.) */
+  /** File category (image, document, video, audio, archive, code, data, other) */
   category: z.enum([
     FileCategory.IMAGE,
     FileCategory.DOCUMENT,
-    FileCategory.PDF,
-    FileCategory.SPREADSHEET,
-    FileCategory.PRESENTATION,
+    FileCategory.VIDEO,
+    FileCategory.AUDIO,
+    FileCategory.ARCHIVE,
+    FileCategory.CODE,
+    FileCategory.DATA,
     FileCategory.OTHER,
   ]),
 

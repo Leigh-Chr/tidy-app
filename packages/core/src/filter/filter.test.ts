@@ -45,35 +45,35 @@ const mockFiles: FileInfo[] = [
     name: 'document',
     extension: 'pdf',
     fullName: 'document.pdf',
-    category: FileCategory.PDF,
+    category: FileCategory.DOCUMENT,
     metadataSupported: true,
     size: 10000,
   }),
   createMockFile({
-    path: '/test/data.xlsx',
-    name: 'data',
-    extension: 'xlsx',
-    fullName: 'data.xlsx',
-    category: FileCategory.SPREADSHEET,
-    metadataSupported: true,
+    path: '/test/movie.mp4',
+    name: 'movie',
+    extension: 'mp4',
+    fullName: 'movie.mp4',
+    category: FileCategory.VIDEO,
+    metadataSupported: false,
     size: 15000,
   }),
   createMockFile({
-    path: '/test/readme.txt',
-    name: 'readme',
-    extension: 'txt',
-    fullName: 'readme.txt',
-    category: FileCategory.DOCUMENT,
+    path: '/test/song.mp3',
+    name: 'song',
+    extension: 'mp3',
+    fullName: 'song.mp3',
+    category: FileCategory.AUDIO,
     metadataSupported: false,
     size: 500,
   }),
   createMockFile({
-    path: '/test/slides.pptx',
-    name: 'slides',
-    extension: 'pptx',
-    fullName: 'slides.pptx',
-    category: FileCategory.PRESENTATION,
-    metadataSupported: true,
+    path: '/test/backup.zip',
+    name: 'backup',
+    extension: 'zip',
+    fullName: 'backup.zip',
+    category: FileCategory.ARCHIVE,
+    metadataSupported: false,
     size: 20000,
   }),
   createMockFile({
@@ -97,32 +97,32 @@ describe('filterByCategory', () => {
       expect(result[0].category).toBe(FileCategory.IMAGE);
     });
 
-    it('filters by PDF category', () => {
-      const result = filterByCategory(mockFiles, FileCategory.PDF);
+    it('filters by DOCUMENT category', () => {
+      const result = filterByCategory(mockFiles, FileCategory.DOCUMENT);
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('document');
     });
 
-    it('filters by DOCUMENT category', () => {
-      const result = filterByCategory(mockFiles, FileCategory.DOCUMENT);
+    it('filters by VIDEO category', () => {
+      const result = filterByCategory(mockFiles, FileCategory.VIDEO);
 
       expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('readme');
+      expect(result[0].name).toBe('movie');
     });
 
-    it('filters by SPREADSHEET category', () => {
-      const result = filterByCategory(mockFiles, FileCategory.SPREADSHEET);
+    it('filters by AUDIO category', () => {
+      const result = filterByCategory(mockFiles, FileCategory.AUDIO);
 
       expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('data');
+      expect(result[0].name).toBe('song');
     });
 
-    it('filters by PRESENTATION category', () => {
-      const result = filterByCategory(mockFiles, FileCategory.PRESENTATION);
+    it('filters by ARCHIVE category', () => {
+      const result = filterByCategory(mockFiles, FileCategory.ARCHIVE);
 
       expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('slides');
+      expect(result[0].name).toBe('backup');
     });
 
     it('filters by OTHER category', () => {
@@ -134,25 +134,24 @@ describe('filterByCategory', () => {
   });
 
   describe('multiple category filter - OR logic (AC3)', () => {
-    it('filters by multiple categories (PDF and SPREADSHEET)', () => {
+    it('filters by multiple categories (VIDEO and AUDIO)', () => {
       const result = filterByCategory(mockFiles, [
-        FileCategory.PDF,
-        FileCategory.SPREADSHEET,
+        FileCategory.VIDEO,
+        FileCategory.AUDIO,
       ]);
 
       expect(result).toHaveLength(2);
-      expect(result.map((f) => f.name).sort()).toEqual(['data', 'document']);
+      expect(result.map((f) => f.name).sort()).toEqual(['movie', 'song']);
     });
 
-    it('filters by all document types', () => {
+    it('filters by multiple media types', () => {
       const result = filterByCategory(mockFiles, [
-        FileCategory.DOCUMENT,
-        FileCategory.PDF,
-        FileCategory.SPREADSHEET,
-        FileCategory.PRESENTATION,
+        FileCategory.IMAGE,
+        FileCategory.VIDEO,
+        FileCategory.AUDIO,
       ]);
 
-      expect(result).toHaveLength(4);
+      expect(result).toHaveLength(3);
     });
 
     it('filters by IMAGE and OTHER', () => {
@@ -169,7 +168,7 @@ describe('filterByCategory', () => {
   describe('edge cases', () => {
     it('returns empty array when no matches', () => {
       const onlyImages = [mockFiles[0]];
-      const result = filterByCategory(onlyImages, FileCategory.PDF);
+      const result = filterByCategory(onlyImages, FileCategory.DOCUMENT);
 
       expect(result).toHaveLength(0);
     });
@@ -201,7 +200,7 @@ describe('filterByExtensions', () => {
   });
 
   it('filters by multiple extensions', () => {
-    const result = filterByExtensions(mockFiles, ['jpg', 'pdf', 'xlsx']);
+    const result = filterByExtensions(mockFiles, ['jpg', 'pdf', 'mp4']);
 
     expect(result).toHaveLength(3);
   });
@@ -222,7 +221,7 @@ describe('filterByExtensions', () => {
   });
 
   it('returns empty array when no matches', () => {
-    const result = filterByExtensions(mockFiles, ['mp3', 'wav']);
+    const result = filterByExtensions(mockFiles, ['csv', 'wav']);
 
     expect(result).toHaveLength(0);
   });
@@ -314,7 +313,7 @@ describe('filterFiles (combined filters)', () => {
 
   it('combines category and size filters', () => {
     const result = filterFiles(mockFiles, {
-      categories: [FileCategory.PDF, FileCategory.SPREADSHEET],
+      categories: [FileCategory.DOCUMENT, FileCategory.VIDEO],
       maxSize: 12000,
     });
 
@@ -361,18 +360,18 @@ describe('filterDocuments (convenience function)', () => {
   it('returns all document types (AC2)', () => {
     const result = filterDocuments(mockFiles);
 
-    expect(result).toHaveLength(4);
-    const categories = result.map((f) => f.category);
-    expect(categories).toContain(FileCategory.DOCUMENT);
-    expect(categories).toContain(FileCategory.PDF);
-    expect(categories).toContain(FileCategory.SPREADSHEET);
-    expect(categories).toContain(FileCategory.PRESENTATION);
+    expect(result).toHaveLength(1);
+    expect(result[0].category).toBe(FileCategory.DOCUMENT);
+    expect(result[0].name).toBe('document');
   });
 
-  it('excludes images and other files', () => {
+  it('excludes images, video, audio, archive, and other files', () => {
     const result = filterDocuments(mockFiles);
 
     expect(result.some((f) => f.category === FileCategory.IMAGE)).toBe(false);
+    expect(result.some((f) => f.category === FileCategory.VIDEO)).toBe(false);
+    expect(result.some((f) => f.category === FileCategory.AUDIO)).toBe(false);
+    expect(result.some((f) => f.category === FileCategory.ARCHIVE)).toBe(false);
     expect(result.some((f) => f.category === FileCategory.OTHER)).toBe(false);
   });
 });
@@ -381,7 +380,7 @@ describe('filterMetadataSupported', () => {
   it('returns only files with metadata support', () => {
     const result = filterMetadataSupported(mockFiles);
 
-    expect(result).toHaveLength(4);
+    expect(result).toHaveLength(2);
     expect(result.every((f) => f.metadataSupported)).toBe(true);
   });
 

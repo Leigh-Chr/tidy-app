@@ -26,9 +26,11 @@ export function calculateStatistics(files: FileInfo[]): ScanStatistics {
   const byCategory: Record<string, number> = {
     [FileCategory.IMAGE]: 0,
     [FileCategory.DOCUMENT]: 0,
-    [FileCategory.PDF]: 0,
-    [FileCategory.SPREADSHEET]: 0,
-    [FileCategory.PRESENTATION]: 0,
+    [FileCategory.VIDEO]: 0,
+    [FileCategory.AUDIO]: 0,
+    [FileCategory.ARCHIVE]: 0,
+    [FileCategory.CODE]: 0,
+    [FileCategory.DATA]: 0,
     [FileCategory.OTHER]: 0,
   };
 

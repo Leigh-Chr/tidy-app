@@ -314,7 +314,7 @@ describe('formatMetadataForDisplay', () => {
     it('includes PDF section when pdf metadata present', () => {
       const metadata: UnifiedMetadata = {
         file: createTestFileInfo({
-          category: FileCategory.PDF,
+          category: FileCategory.DOCUMENT,
           extension: 'pdf',
         }),
         image: null,
@@ -344,7 +344,7 @@ describe('formatMetadataForDisplay', () => {
 
     it('formats page count with plural', () => {
       const metadata: UnifiedMetadata = {
-        file: createTestFileInfo({ category: FileCategory.PDF }),
+        file: createTestFileInfo({ category: FileCategory.DOCUMENT }),
         image: null,
         pdf: {
           title: null,
@@ -371,7 +371,7 @@ describe('formatMetadataForDisplay', () => {
 
     it('formats single page correctly', () => {
       const metadata: UnifiedMetadata = {
-        file: createTestFileInfo({ category: FileCategory.PDF }),
+        file: createTestFileInfo({ category: FileCategory.DOCUMENT }),
         image: null,
         pdf: {
           title: null,
@@ -398,7 +398,7 @@ describe('formatMetadataForDisplay', () => {
 
     it('filters out fields with null values', () => {
       const metadata: UnifiedMetadata = {
-        file: createTestFileInfo({ category: FileCategory.PDF }),
+        file: createTestFileInfo({ category: FileCategory.DOCUMENT }),
         image: null,
         pdf: {
           title: 'Test PDF',

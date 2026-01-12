@@ -332,7 +332,7 @@ describe('evaluateFilenameRulesForFiles', () => {
 
     const files: FileInfo[] = [
       createMockFileInfo({ fullName: 'IMG_1234.jpg' }),
-      createMockFileInfo({ fullName: 'document.pdf', category: FileCategory.PDF }),
+      createMockFileInfo({ fullName: 'document.pdf', category: FileCategory.DOCUMENT }),
       createMockFileInfo({ fullName: 'other.txt', category: FileCategory.OTHER }),
     ];
 

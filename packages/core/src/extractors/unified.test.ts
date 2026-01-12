@@ -96,7 +96,7 @@ describe('getFileMetadata', () => {
         name: 'with-metadata',
         extension: 'pdf',
         fullName: 'with-metadata.pdf',
-        category: FileCategory.PDF,
+        category: FileCategory.DOCUMENT,
         metadataSupported: true,
         metadataCapability: MetadataCapability.FULL,
       });
@@ -119,7 +119,7 @@ describe('getFileMetadata', () => {
         name: 'corrupted',
         extension: 'pdf',
         fullName: 'corrupted.pdf',
-        category: FileCategory.PDF,
+        category: FileCategory.DOCUMENT,
         metadataSupported: true,
         metadataCapability: MetadataCapability.FULL,
       });
@@ -165,7 +165,7 @@ describe('getFileMetadata', () => {
         name: 'spreadsheet',
         extension: 'xlsx',
         fullName: 'spreadsheet.xlsx',
-        category: FileCategory.SPREADSHEET,
+        category: FileCategory.DOCUMENT,
         metadataSupported: true,
         metadataCapability: MetadataCapability.FULL,
       });
@@ -185,7 +185,7 @@ describe('getFileMetadata', () => {
         name: 'presentation',
         extension: 'pptx',
         fullName: 'presentation.pptx',
-        category: FileCategory.PRESENTATION,
+        category: FileCategory.DOCUMENT,
         metadataSupported: true,
         metadataCapability: MetadataCapability.FULL,
       });

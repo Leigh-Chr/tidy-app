@@ -96,7 +96,7 @@ export const FILE_TYPE_REGISTRY: FileTypeInfo[] = [
   // PDF documents
   {
     extensions: ['pdf'],
-    category: FileCategory.PDF,
+    category: FileCategory.DOCUMENT,
     metadataCapability: MetadataCapability.FULL,
     mimeTypes: ['application/pdf'],
     description: 'PDF Document',
@@ -123,7 +123,7 @@ export const FILE_TYPE_REGISTRY: FileTypeInfo[] = [
   },
   {
     extensions: ['xlsx'],
-    category: FileCategory.SPREADSHEET,
+    category: FileCategory.DOCUMENT,
     metadataCapability: MetadataCapability.FULL,
     mimeTypes: [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -133,14 +133,14 @@ export const FILE_TYPE_REGISTRY: FileTypeInfo[] = [
   },
   {
     extensions: ['xls'],
-    category: FileCategory.SPREADSHEET,
+    category: FileCategory.DOCUMENT,
     metadataCapability: MetadataCapability.BASIC,
     mimeTypes: ['application/vnd.ms-excel'],
     description: 'Legacy Excel Spreadsheet',
   },
   {
     extensions: ['pptx'],
-    category: FileCategory.PRESENTATION,
+    category: FileCategory.DOCUMENT,
     metadataCapability: MetadataCapability.FULL,
     mimeTypes: [
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -150,7 +150,7 @@ export const FILE_TYPE_REGISTRY: FileTypeInfo[] = [
   },
   {
     extensions: ['ppt'],
-    category: FileCategory.PRESENTATION,
+    category: FileCategory.DOCUMENT,
     metadataCapability: MetadataCapability.BASIC,
     mimeTypes: ['application/vnd.ms-powerpoint'],
     description: 'Legacy PowerPoint Presentation',
@@ -172,22 +172,8 @@ export const FILE_TYPE_REGISTRY: FileTypeInfo[] = [
     description: 'Markdown File',
   },
   {
-    extensions: ['json'],
-    category: FileCategory.DOCUMENT,
-    metadataCapability: MetadataCapability.BASIC,
-    mimeTypes: ['application/json'],
-    description: 'JSON File',
-  },
-  {
-    extensions: ['xml'],
-    category: FileCategory.DOCUMENT,
-    metadataCapability: MetadataCapability.BASIC,
-    mimeTypes: ['application/xml', 'text/xml'],
-    description: 'XML File',
-  },
-  {
     extensions: ['csv'],
-    category: FileCategory.SPREADSHEET,
+    category: FileCategory.DOCUMENT,
     metadataCapability: MetadataCapability.BASIC,
     mimeTypes: ['text/csv'],
     description: 'CSV File',
@@ -198,6 +184,191 @@ export const FILE_TYPE_REGISTRY: FileTypeInfo[] = [
     metadataCapability: MetadataCapability.BASIC,
     mimeTypes: ['application/rtf'],
     description: 'Rich Text File',
+  },
+
+  // Video files
+  {
+    extensions: ['mp4'],
+    category: FileCategory.VIDEO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['video/mp4'],
+    description: 'MP4 Video',
+  },
+  {
+    extensions: ['avi'],
+    category: FileCategory.VIDEO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['video/x-msvideo'],
+    description: 'AVI Video',
+  },
+  {
+    extensions: ['mkv'],
+    category: FileCategory.VIDEO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['video/x-matroska'],
+    description: 'Matroska Video',
+  },
+  {
+    extensions: ['mov'],
+    category: FileCategory.VIDEO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['video/quicktime'],
+    description: 'QuickTime Video',
+  },
+  {
+    extensions: ['webm'],
+    category: FileCategory.VIDEO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['video/webm'],
+    description: 'WebM Video',
+  },
+
+  // Audio files
+  {
+    extensions: ['mp3'],
+    category: FileCategory.AUDIO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['audio/mpeg'],
+    description: 'MP3 Audio',
+  },
+  {
+    extensions: ['wav'],
+    category: FileCategory.AUDIO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['audio/wav'],
+    description: 'WAV Audio',
+  },
+  {
+    extensions: ['flac'],
+    category: FileCategory.AUDIO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['audio/flac'],
+    description: 'FLAC Audio',
+  },
+  {
+    extensions: ['ogg'],
+    category: FileCategory.AUDIO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['audio/ogg'],
+    description: 'OGG Audio',
+  },
+  {
+    extensions: ['m4a'],
+    category: FileCategory.AUDIO,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['audio/mp4'],
+    description: 'M4A Audio',
+  },
+
+  // Archive files
+  {
+    extensions: ['zip'],
+    category: FileCategory.ARCHIVE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/zip'],
+    description: 'ZIP Archive',
+  },
+  {
+    extensions: ['tar'],
+    category: FileCategory.ARCHIVE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/x-tar'],
+    description: 'TAR Archive',
+  },
+  {
+    extensions: ['gz'],
+    category: FileCategory.ARCHIVE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/gzip'],
+    description: 'GZIP Archive',
+  },
+  {
+    extensions: ['7z'],
+    category: FileCategory.ARCHIVE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/x-7z-compressed'],
+    description: '7-Zip Archive',
+  },
+  {
+    extensions: ['rar'],
+    category: FileCategory.ARCHIVE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/vnd.rar'],
+    description: 'RAR Archive',
+  },
+
+  // Code files
+  {
+    extensions: ['js'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/javascript'],
+    description: 'JavaScript File',
+  },
+  {
+    extensions: ['ts'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/typescript'],
+    description: 'TypeScript File',
+  },
+  {
+    extensions: ['py'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['text/x-python'],
+    description: 'Python File',
+  },
+  {
+    extensions: ['rs'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['text/x-rust'],
+    description: 'Rust File',
+  },
+  {
+    extensions: ['json'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/json'],
+    description: 'JSON File',
+  },
+  {
+    extensions: ['xml'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/xml', 'text/xml'],
+    description: 'XML File',
+  },
+  {
+    extensions: ['yaml', 'yml'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/x-yaml'],
+    description: 'YAML File',
+  },
+  {
+    extensions: ['html', 'htm'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['text/html'],
+    description: 'HTML File',
+  },
+  {
+    extensions: ['css'],
+    category: FileCategory.CODE,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['text/css'],
+    description: 'CSS File',
+  },
+
+  // Data files
+  {
+    extensions: ['db', 'sqlite'],
+    category: FileCategory.DATA,
+    metadataCapability: MetadataCapability.BASIC,
+    mimeTypes: ['application/x-sqlite3'],
+    description: 'SQLite Database',
   },
 ];
 

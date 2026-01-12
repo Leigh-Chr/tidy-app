@@ -21,16 +21,61 @@ describe('FILE_TYPE_REGISTRY', () => {
     }
   });
 
-  it('contains entries for PDF', () => {
+  it('contains entries for PDF (categorized as DOCUMENT)', () => {
     const info = getFileTypeInfo('pdf');
     expect(info).toBeDefined();
-    expect(info?.category).toBe(FileCategory.PDF);
+    expect(info?.category).toBe(FileCategory.DOCUMENT);
   });
 
-  it('contains entries for Office documents', () => {
+  it('contains entries for Office documents (all categorized as DOCUMENT)', () => {
     expect(getFileTypeInfo('docx')?.category).toBe(FileCategory.DOCUMENT);
-    expect(getFileTypeInfo('xlsx')?.category).toBe(FileCategory.SPREADSHEET);
-    expect(getFileTypeInfo('pptx')?.category).toBe(FileCategory.PRESENTATION);
+    expect(getFileTypeInfo('xlsx')?.category).toBe(FileCategory.DOCUMENT);
+    expect(getFileTypeInfo('pptx')?.category).toBe(FileCategory.DOCUMENT);
+  });
+
+  it('contains entries for video formats', () => {
+    const videoExts = ['mp4', 'avi', 'mkv', 'mov', 'webm'];
+    for (const ext of videoExts) {
+      const info = getFileTypeInfo(ext);
+      expect(info).toBeDefined();
+      expect(info?.category).toBe(FileCategory.VIDEO);
+    }
+  });
+
+  it('contains entries for audio formats', () => {
+    const audioExts = ['mp3', 'wav', 'flac', 'ogg', 'm4a'];
+    for (const ext of audioExts) {
+      const info = getFileTypeInfo(ext);
+      expect(info).toBeDefined();
+      expect(info?.category).toBe(FileCategory.AUDIO);
+    }
+  });
+
+  it('contains entries for archive formats', () => {
+    const archiveExts = ['zip', 'tar', 'gz', '7z', 'rar'];
+    for (const ext of archiveExts) {
+      const info = getFileTypeInfo(ext);
+      expect(info).toBeDefined();
+      expect(info?.category).toBe(FileCategory.ARCHIVE);
+    }
+  });
+
+  it('contains entries for code formats', () => {
+    const codeExts = ['js', 'ts', 'py', 'rs', 'json', 'yaml', 'html', 'css'];
+    for (const ext of codeExts) {
+      const info = getFileTypeInfo(ext);
+      expect(info).toBeDefined();
+      expect(info?.category).toBe(FileCategory.CODE);
+    }
+  });
+
+  it('contains entries for data formats', () => {
+    const dataExts = ['db', 'sqlite'];
+    for (const ext of dataExts) {
+      const info = getFileTypeInfo(ext);
+      expect(info).toBeDefined();
+      expect(info?.category).toBe(FileCategory.DATA);
+    }
   });
 
   it('has no duplicate extensions across entries', () => {
@@ -130,6 +175,12 @@ describe('getMetadataCapability', () => {
     expect(getMetadataCapability('csv')).toBe(MetadataCapability.BASIC);
   });
 
+  it('returns BASIC for video/audio/archive formats', () => {
+    expect(getMetadataCapability('mp4')).toBe(MetadataCapability.BASIC);
+    expect(getMetadataCapability('mp3')).toBe(MetadataCapability.BASIC);
+    expect(getMetadataCapability('zip')).toBe(MetadataCapability.BASIC);
+  });
+
   it('returns BASIC for unknown extensions', () => {
     expect(getMetadataCapability('xyz')).toBe(MetadataCapability.BASIC);
     expect(getMetadataCapability('unknown')).toBe(MetadataCapability.BASIC);
@@ -161,6 +212,7 @@ describe('isMetadataSupportedByRegistry', () => {
     expect(isMetadataSupportedByRegistry('doc')).toBe(false);
     expect(isMetadataSupportedByRegistry('xls')).toBe(false);
     expect(isMetadataSupportedByRegistry('exe')).toBe(false);
+    expect(isMetadataSupportedByRegistry('mp4')).toBe(false);
     expect(isMetadataSupportedByRegistry('zip')).toBe(false);
   });
 
@@ -181,6 +233,7 @@ describe('getSupportDescription', () => {
     expect(getSupportDescription('txt')).toBe('Basic info only');
     expect(getSupportDescription('doc')).toBe('Basic info only');
     expect(getSupportDescription('xyz')).toBe('Basic info only');
+    expect(getSupportDescription('mp4')).toBe('Basic info only');
   });
 
   it('handles case insensitivity', () => {
@@ -211,6 +264,12 @@ describe('getMimeType', () => {
     expect(getMimeType('pptx')).toBe(
       'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     );
+  });
+
+  it('returns correct MIME types for video/audio', () => {
+    expect(getMimeType('mp4')).toBe('video/mp4');
+    expect(getMimeType('mp3')).toBe('audio/mpeg');
+    expect(getMimeType('zip')).toBe('application/zip');
   });
 
   it('returns correct MIME types for text files', () => {
@@ -267,6 +326,9 @@ describe('getFullMetadataExtensions', () => {
     expect(extensions).not.toContain('xls');
     expect(extensions).not.toContain('bmp');
     expect(extensions).not.toContain('svg');
+    expect(extensions).not.toContain('mp4');
+    expect(extensions).not.toContain('mp3');
+    expect(extensions).not.toContain('zip');
   });
 });
 

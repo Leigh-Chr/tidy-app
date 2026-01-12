@@ -18,9 +18,11 @@ export const scanStatisticsSchema = z.object({
     z.enum([
       FileCategory.IMAGE,
       FileCategory.DOCUMENT,
-      FileCategory.PDF,
-      FileCategory.SPREADSHEET,
-      FileCategory.PRESENTATION,
+      FileCategory.VIDEO,
+      FileCategory.AUDIO,
+      FileCategory.ARCHIVE,
+      FileCategory.CODE,
+      FileCategory.DATA,
       FileCategory.OTHER,
     ]),
     z.number().nonnegative()

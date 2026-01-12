@@ -3,6 +3,7 @@
 
 mod config;
 mod export;
+mod history;
 mod llm;
 mod rename;
 mod scanner;
@@ -10,6 +11,10 @@ mod version;
 
 pub use config::{get_config, reset_config, save_config};
 pub use export::export_results;
+pub use history::{
+    can_undo_operation, clear_history, get_history_count, get_history_entry, load_history,
+    record_operation, undo_operation,
+};
 pub use llm::{analyze_files_with_llm, check_ollama_health, check_openai_health, clear_analysis_cache, get_cache_stats, list_ollama_models, list_openai_models};
 pub use rename::{execute_rename, generate_preview};
 pub use scanner::scan_folder;

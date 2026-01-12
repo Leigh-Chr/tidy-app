@@ -431,7 +431,7 @@ describe('8.3: Multiple Filename Rules with Priority Ordering', () => {
       createMockFileInfo('IMG_1234.jpg'),
       createMockFileInfo('DSC_5678.jpg'),
       createMockFileInfo('random.jpg'),
-      createMockFileInfo('document.pdf', FileCategory.PDF),
+      createMockFileInfo('document.pdf', FileCategory.DOCUMENT),
     ];
 
     const results = evaluateFilenameRulesForFiles(rules, files);
@@ -613,7 +613,7 @@ describe('End-to-End: Complete Workflow', () => {
     const files: FileInfo[] = [
       createMockFileInfo('IMG_1234.jpg'),
       createMockFileInfo('Screen Shot 2024-01-15.png'),
-      createMockFileInfo('report.pdf', FileCategory.PDF),
+      createMockFileInfo('report.pdf', FileCategory.DOCUMENT),
       createMockFileInfo('random.txt', FileCategory.OTHER),
     ];
 

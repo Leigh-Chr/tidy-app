@@ -37,6 +37,7 @@ import {
   checkOpenAiHealth,
   listOllamaModels,
   listOpenAiModels,
+  recordOperation,
 } from "@/lib/tauri";
 
 // =============================================================================
@@ -721,6 +722,14 @@ export const useAppStore = create<AppState>((set) => ({
         lastRenameResult: result,
         selectedProposalIds: new Set<string>(),
       });
+
+      // Record operation to history for undo support (Story 9.1)
+      // Fire and forget - don't block the UI
+      if (result.summary.succeeded > 0) {
+        recordOperation(result).catch((err) => {
+          console.warn("Failed to record operation to history:", err);
+        });
+      }
 
       return { ok: true, data: result };
     } catch (e) {
