@@ -4,11 +4,11 @@
 mod commands;
 
 use commands::{
-    analyze_files_with_llm, can_undo_operation, check_ollama_health, check_openai_health,
+    analyze_files_with_llm, can_undo_operation, cancel_scan, check_ollama_health, check_openai_health,
     clear_analysis_cache, clear_history, execute_rename, export_results, generate_preview,
-    get_cache_stats, get_config, get_history_count, get_history_entry, get_version, load_history,
-    list_ollama_models, list_openai_models, record_operation, reset_config, save_config,
-    scan_folder, undo_operation,
+    get_active_scans, get_cache_stats, get_config, get_history_count, get_history_entry, get_version,
+    load_history, list_ollama_models, list_openai_models, record_operation, reset_config, save_config,
+    scan_folder, scan_folder_with_progress, undo_operation, ScanState,
 };
 use tauri::Manager;
 
@@ -39,9 +39,14 @@ pub fn run() {
 
             Ok(())
         })
+        // State for managing scan sessions with progress and cancellation
+        .manage(ScanState::new())
         .invoke_handler(tauri::generate_handler![
             get_version,
             scan_folder,
+            scan_folder_with_progress,
+            cancel_scan,
+            get_active_scans,
             get_config,
             save_config,
             reset_config,

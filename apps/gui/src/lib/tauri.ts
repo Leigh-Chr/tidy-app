@@ -72,6 +72,40 @@ export interface ScanResult {
   totalCount: number;
   /** Total size in bytes */
   totalSize: number;
+  /** Scan session ID (for tracking/cancellation) */
+  sessionId?: string;
+  /** Whether the scan was cancelled */
+  cancelled?: boolean;
+}
+
+// =============================================================================
+// Scan Progress Types (M4: Progress and Cancellation)
+// =============================================================================
+
+/** Phases of scanning operation */
+export type ScanPhase =
+  | "starting"
+  | "discovering"
+  | "processing"
+  | "complete"
+  | "cancelled";
+
+/** Progress event payload for scan operations */
+export interface ScanProgress {
+  /** Scan session ID */
+  sessionId: string;
+  /** Current file being processed */
+  currentFile: string;
+  /** Number of files discovered so far */
+  discovered: number;
+  /** Number of files processed (after filtering) */
+  processed: number;
+  /** Current phase of scanning */
+  phase: ScanPhase;
+  /** Whether scan is complete */
+  complete: boolean;
+  /** Error message if any */
+  error?: string;
 }
 
 // =============================================================================
@@ -302,6 +336,70 @@ export async function scanFolder(
   options?: ScanOptions
 ): Promise<ScanResult> {
   return invoke<ScanResult>("scan_folder", { path, options });
+}
+
+/**
+ * Scan a folder with progress reporting and cancellation support
+ *
+ * This function emits "scan-progress" events during the scan.
+ * Listen for these events to display progress to the user.
+ *
+ * @param path - Absolute path to folder to scan
+ * @param options - Optional scan configuration
+ * @returns Promise resolving to scan results with sessionId
+ *
+ * @example
+ * ```typescript
+ * import { listen } from '@tauri-apps/api/event';
+ *
+ * // Listen for progress events
+ * const unlisten = await listen<ScanProgress>('scan-progress', (event) => {
+ *   console.log(`Progress: ${event.payload.discovered} files discovered`);
+ * });
+ *
+ * // Start scan
+ * const result = await scanFolderWithProgress('/path/to/folder');
+ *
+ * // Stop listening when done
+ * unlisten();
+ * ```
+ */
+export async function scanFolderWithProgress(
+  path: string,
+  options?: ScanOptions
+): Promise<ScanResult> {
+  return invoke<ScanResult>("scan_folder_with_progress", { path, options });
+}
+
+/**
+ * Cancel an active scan session
+ *
+ * @param sessionId - The session ID returned from scanFolderWithProgress
+ * @returns Promise resolving to true if cancellation was successful
+ *
+ * @example
+ * ```typescript
+ * // Start a scan
+ * const scanPromise = scanFolderWithProgress('/path/to/folder');
+ *
+ * // Cancel after 5 seconds
+ * setTimeout(async () => {
+ *   const cancelled = await cancelScan(sessionId);
+ *   if (cancelled) console.log('Scan cancelled');
+ * }, 5000);
+ * ```
+ */
+export async function cancelScan(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("cancel_scan", { sessionId });
+}
+
+/**
+ * Get the number of active scan sessions
+ *
+ * @returns Promise resolving to the count of active scans
+ */
+export async function getActiveScans(): Promise<number> {
+  return invoke<number>("get_active_scans");
 }
 
 // =============================================================================
