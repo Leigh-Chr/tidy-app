@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAppStore } from "@/stores/app-store";
 import { TemplateList } from "@/components/template-list/TemplateList";
 import { PreferencesPanel } from "@/components/preferences-panel/PreferencesPanel";
@@ -61,7 +62,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         </Button>
       </DialogTrigger>
       <DialogContent
-        className="sm:max-w-[600px] max-h-[85vh] overflow-hidden flex flex-col"
+        className="sm:max-w-[600px] max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col p-4 sm:p-6"
         data-testid="settings-modal"
       >
         <DialogHeader>
@@ -73,11 +74,18 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
         {configStatus === "loading" ? (
           <div
-            className="flex items-center justify-center py-12"
+            className="space-y-4 py-4"
             role="status"
             aria-label="Loading settings"
           >
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            {/* Skeleton for tabs */}
+            <Skeleton className="h-10 w-full" />
+            {/* Skeleton for content */}
+            <div className="space-y-3">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
           </div>
         ) : configStatus === "error" ? (
           <div className="text-center py-8" data-testid="settings-error">

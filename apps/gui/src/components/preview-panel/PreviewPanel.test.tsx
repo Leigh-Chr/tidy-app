@@ -343,12 +343,15 @@ describe("PreviewPanel", () => {
       mockStore.config = createMockConfig();
       mockStore.preview = createMockPreview();
       mockStore.previewStatus = "applying";
+      // Set some selected proposals for realistic progress display
+      mockStore.selectedProposalIds = new Set(["1", "2", "3"]);
       mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
 
       render(<PreviewPanel />);
 
       expect(screen.getByTestId("rename-progress-card")).toBeInTheDocument();
-      expect(screen.getByText("Renaming files...")).toBeInTheDocument();
+      // Progress shows file count when available
+      expect(screen.getByText("Renaming file 1 of 3...")).toBeInTheDocument();
     });
   });
 });

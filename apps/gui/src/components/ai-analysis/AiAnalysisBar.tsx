@@ -7,7 +7,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -79,16 +79,12 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
         return;
       }
 
-      console.log("[AI Analysis] Starting analysis of", files.length, "files");
-      console.log("[AI Analysis] File extensions:", files.map(f => f.extension).join(", "));
       toast.info(`Analyzing ${files.length} files...`, { duration: 3000 });
 
       const result = await analyzeFilesWithAi(files);
-      console.log("[AI Analysis] Result:", result);
 
       if (result.ok) {
         const { analyzed, skipped, failed, results } = result.data;
-        console.log("[AI Analysis] Summary - analyzed:", analyzed, "skipped:", skipped, "failed:", failed);
 
         // Check if this was skipped due to template not using AI
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
@@ -99,11 +95,6 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
           );
           return;
         }
-
-        // Log details of each result for debugging
-        results.forEach(r => {
-          console.log(`[AI Analysis] ${r.filePath}: source=${r.source}, skipped=${r.skipped}, error=${r.error || 'none'}`);
-        });
 
         if (analyzed > 0) {
           toast.success(
@@ -129,7 +120,6 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
           toast.info("No files were analyzed", { duration: 4000 });
         }
       } else {
-        console.error("[AI Analysis] Error:", result.error);
         toast.error(`Analysis failed: ${result.error.message}`, { duration: 5000 });
       }
     }
@@ -168,14 +158,43 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
         </div>
       )}
 
-      {/* Active AI indicator - shown when AI suggestions are being used */}
+      {/* Active AI indicator with preview - shown when AI suggestions are being used */}
       {hasSuccessfulResults && (
-        <div className="flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/50 rounded text-purple-700 dark:text-purple-300">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          <span className="text-xs font-medium">AI names active</span>
-        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/50 rounded text-purple-700 dark:text-purple-300 cursor-help">
+                <Check className="w-4 h-4" aria-hidden="true" />
+                <span className="text-xs font-medium">AI names active ({aiSuggestions.size})</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-md p-0">
+              <div className="p-3">
+                <p className="font-medium mb-2 text-sm">AI Suggestions Preview</p>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {Array.from(aiSuggestions.entries())
+                    .slice(0, 5)
+                    .map(([path, suggestion]) => {
+                      const fileName = path.split("/").pop() || path;
+                      return (
+                        <div key={path} className="text-xs">
+                          <div className="text-muted-foreground truncate">{fileName}</div>
+                          <div className="font-mono text-purple-600 dark:text-purple-400 truncate">
+                            → {suggestion.suggestedName}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  {aiSuggestions.size > 5 && (
+                    <div className="text-xs text-muted-foreground pt-1">
+                      ... and {aiSuggestions.size - 5} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
 
       {/* Results Summary */}

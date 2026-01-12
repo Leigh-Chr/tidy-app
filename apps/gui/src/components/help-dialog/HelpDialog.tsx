@@ -46,11 +46,11 @@ interface KeyboardShortcut {
 /** Keyboard shortcuts available in the application */
 const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
   { id: "open-folder", keys: ["Ctrl/⌘", "O"], description: "Open folder picker" },
-  { id: "preview", keys: ["Ctrl/⌘", "P"], description: "Generate preview" },
+  { id: "select-all", keys: ["Ctrl/⌘", "A"], description: "Select all ready files" },
+  { id: "deselect-all", keys: ["Ctrl/⌘", "D"], description: "Deselect all files" },
   { id: "rename", keys: ["Ctrl/⌘", "Enter"], description: "Apply renames" },
-  { id: "select-all", keys: ["Ctrl/⌘", "A"], description: "Select all files" },
-  { id: "help", keys: ["F1"], description: "Open help dialog" },
-  { id: "escape", keys: ["Esc"], description: "Cancel / Close dialog" },
+  { id: "escape", keys: ["Esc"], description: "Cancel / Go back" },
+  { id: "shift-click", keys: ["Shift", "Click"], description: "Select range of files" },
 ];
 
 /** Quick start steps */

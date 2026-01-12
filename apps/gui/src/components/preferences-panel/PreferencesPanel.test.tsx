@@ -209,7 +209,7 @@ describe("PreferencesPanel", () => {
       render(<PreferencesPanel preferences={defaultPreferences} />);
 
       expect(screen.getByTestId("saving-indicator")).toBeInTheDocument();
-      expect(screen.getByText("Saving...")).toBeInTheDocument();
+      expect(screen.getByText("Saving preferences...")).toBeInTheDocument();
     });
 
     it("hides saving indicator when not saving", () => {

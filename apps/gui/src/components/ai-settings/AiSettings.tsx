@@ -23,7 +23,21 @@ import {
 import { useAppStore, type OllamaConfig } from "@/stores/app-store";
 import type { FileTypePreset, LlmProvider, OfflineMode } from "@/lib/tauri";
 
-// Known vision-capable model prefixes (for Ollama)
+/**
+ * Known vision-capable model prefixes (for Ollama)
+ *
+ * TODO: Move to OllamaConfig in backend to make this user-configurable.
+ * Users should be able to add custom prefixes for new vision models
+ * without updating the application code.
+ *
+ * Current known vision models:
+ * - llava: LLaVA (Large Language and Vision Assistant)
+ * - bakllava: BakLLaVA (fine-tuned LLaVA)
+ * - moondream: Moondream vision model
+ * - minicpm-v: MiniCPM-V vision model
+ * - gemma3: Google Gemma 3 with vision
+ * - llama3.2-vision: Meta LLaMA 3.2 Vision
+ */
 const VISION_MODEL_PREFIXES = [
   "llava",
   "bakllava",

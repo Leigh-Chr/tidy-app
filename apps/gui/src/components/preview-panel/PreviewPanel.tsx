@@ -8,7 +8,7 @@
  * Enhanced with reorganization mode support for folder organization.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { useAppStore } from "@/stores/app-store";
 import type { RenameStatus, OrganizeOptions } from "@/lib/tauri";
@@ -19,6 +19,13 @@ import { RenameProgress } from "@/components/rename-progress/RenameProgress";
 import { TemplateSelector } from "@/components/template-selector/TemplateSelector";
 import { ReorganizationModeSelector } from "@/components/reorganization-mode/ReorganizationModeSelector";
 import { AiAnalysisBar } from "@/components/ai-analysis";
+import { FolderTreePreview } from "@/components/folder-tree-preview";
+import {
+  PreviewToolbar,
+  type SortField,
+  type SortDirection,
+  type StatusFilter,
+} from "@/components/preview-toolbar";
 
 export function PreviewPanel() {
   const {
@@ -33,6 +40,7 @@ export function PreviewPanel() {
     lastRenameResult,
     generatePreview,
     toggleProposalSelection,
+    selectProposals,
     selectAllReady,
     deselectAll,
     applyRenames,
@@ -53,6 +61,12 @@ export function PreviewPanel() {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<RenameStatus>>(new Set());
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
+
+  // Search/filter/sort state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   // Load config on mount
   useEffect(() => {
@@ -230,6 +244,68 @@ export function PreviewPanel() {
     setHasApplied(false);
   }, [clearPreview]);
 
+  // Handle sort change
+  const handleSortChange = useCallback((field: SortField, direction: SortDirection) => {
+    setSortField(field);
+    setSortDirection(direction);
+  }, []);
+
+  // Filter and sort proposals
+  const filteredPreview = useMemo(() => {
+    if (!preview) return null;
+
+    let proposals = [...preview.proposals];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      proposals = proposals.filter(
+        (p) =>
+          p.originalName.toLowerCase().includes(query) ||
+          p.proposedName.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply status filter
+    if (statusFilter !== "all") {
+      const statusMap: Record<StatusFilter, RenameStatus | undefined> = {
+        all: undefined,
+        ready: "ready",
+        conflict: "conflict",
+        missing: "missing-data",
+        "no-change": "no-change",
+      };
+      const targetStatus = statusMap[statusFilter];
+      if (targetStatus) {
+        proposals = proposals.filter((p) => p.status === targetStatus);
+      }
+    }
+
+    // Apply sorting
+    proposals.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case "name":
+          comparison = a.originalName.localeCompare(b.originalName);
+          break;
+        case "status":
+          comparison = a.status.localeCompare(b.status);
+          break;
+        case "folder":
+          comparison = (a.destinationFolder ?? "").localeCompare(b.destinationFolder ?? "");
+          break;
+      }
+
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
+    return {
+      ...preview,
+      proposals,
+    };
+  }, [preview, searchQuery, statusFilter, sortField, sortDirection]);
+
   // Loading state
   if (previewStatus === "generating") {
     return (
@@ -293,6 +369,16 @@ export function PreviewPanel() {
             baseDirectory={selectedFolder ?? undefined}
             disabled={isApplying}
           />
+
+          {/* Folder Tree Preview (only in organize mode) */}
+          {reorganizationMode === "organize" && filteredPreview && (
+            <FolderTreePreview
+              proposals={filteredPreview.proposals}
+              baseDirectory={selectedFolder ?? undefined}
+              maxFolders={8}
+              maxFilesPerFolder={3}
+            />
+          )}
         </div>
       )}
 
@@ -307,25 +393,42 @@ export function PreviewPanel() {
       {/* Progress/Result Display */}
       <RenameProgress
         isInProgress={isApplying}
-        progress={isApplying ? 50 : 0} // TODO: Real progress from events
+        progress={0}
+        currentFile={isApplying ? 1 : undefined}
+        totalFiles={isApplying ? selectedProposalIds.size : undefined}
         result={lastRenameResult}
         onDismiss={handleDismissResult}
       />
 
       {/* Preview Table */}
-      {!lastRenameResult && (
+      {!lastRenameResult && filteredPreview && (
         <div
-          className="border rounded-lg overflow-hidden"
-          style={{ height: "400px" }}
+          className="border rounded-lg overflow-hidden min-h-[300px] max-h-[50vh] flex flex-col"
         >
-          <PreviewTable
-            preview={preview}
-            selectedIds={selectedProposalIds}
-            onToggleSelection={toggleProposalSelection}
-            collapsedGroups={collapsedGroups}
-            onToggleGroup={handleToggleGroup}
-            aiSuggestions={aiSuggestions}
+          {/* Search/Sort/Filter Toolbar */}
+          <PreviewToolbar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            totalCount={preview.proposals.length}
+            filteredCount={filteredPreview.proposals.length}
+            disabled={isApplying}
           />
+          <div className="flex-1 overflow-hidden">
+            <PreviewTable
+              preview={filteredPreview}
+              selectedIds={selectedProposalIds}
+              onToggleSelection={toggleProposalSelection}
+              onSelectRange={selectProposals}
+              collapsedGroups={collapsedGroups}
+              onToggleGroup={handleToggleGroup}
+              aiSuggestions={aiSuggestions}
+            />
+          </div>
         </div>
       )}
 

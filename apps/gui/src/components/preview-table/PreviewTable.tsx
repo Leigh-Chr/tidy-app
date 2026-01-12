@@ -21,6 +21,8 @@ export interface PreviewTableProps {
   selectedIds: Set<string>;
   /** Callback when a proposal is toggled */
   onToggleSelection: (proposalId: string) => void;
+  /** Callback for range selection (shift+click) */
+  onSelectRange?: (proposalIds: string[], addToSelection: boolean) => void;
   /** Collapsed status groups */
   collapsedGroups?: Set<RenameStatus>;
   /** Callback when a group is toggled */
@@ -31,11 +33,11 @@ export interface PreviewTableProps {
 
 /** Status group configuration for display order and styling */
 const STATUS_CONFIG: Record<RenameStatus, { label: string; className: string; order: number }> = {
-  ready: { label: "Ready to Rename", className: "bg-green-50 border-green-200", order: 0 },
-  conflict: { label: "Conflicts", className: "bg-red-50 border-red-200", order: 1 },
-  "missing-data": { label: "Missing Data", className: "bg-yellow-50 border-yellow-200", order: 2 },
-  "invalid-name": { label: "Invalid Name", className: "bg-orange-50 border-orange-200", order: 3 },
-  "no-change": { label: "No Change", className: "bg-gray-50 border-gray-200", order: 4 },
+  ready: { label: "Ready to Rename", className: "bg-green-50 dark:bg-green-950/50 border-green-200 dark:border-green-800", order: 0 },
+  conflict: { label: "Conflicts", className: "bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-800", order: 1 },
+  "missing-data": { label: "Missing Data", className: "bg-yellow-50 dark:bg-yellow-950/50 border-yellow-200 dark:border-yellow-800", order: 2 },
+  "invalid-name": { label: "Invalid Name", className: "bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800", order: 3 },
+  "no-change": { label: "No Change", className: "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700", order: 4 },
 };
 
 type GroupedItem =
@@ -46,12 +48,14 @@ export function PreviewTable({
   preview,
   selectedIds,
   onToggleSelection,
+  onSelectRange,
   collapsedGroups = new Set(),
   onToggleGroup,
   aiSuggestions,
 }: PreviewTableProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
 
   const toggleRowExpansion = useCallback((proposalId: string) => {
     setExpandedRows((prev) => {
@@ -114,6 +118,34 @@ export function PreviewTable({
   const expandedRowsKey = useMemo(
     () => Array.from(expandedRows).sort().join(","),
     [expandedRows]
+  );
+
+  // Handle selection with shift+click for range selection
+  const handleSelection = useCallback(
+    (proposalId: string, index: number, event: React.MouseEvent) => {
+      if (event.shiftKey && lastClickedIndex !== null && onSelectRange) {
+        // Shift+click: select range
+        const start = Math.min(lastClickedIndex, index);
+        const end = Math.max(lastClickedIndex, index);
+
+        // Get all row items in the range
+        const idsInRange: string[] = [];
+        for (let i = start; i <= end; i++) {
+          const item = flattenedItems[i];
+          if (item.type === "row") {
+            idsInRange.push(item.proposal.id);
+          }
+        }
+
+        // Add to selection (keep ctrl for toggle behavior)
+        onSelectRange(idsInRange, event.ctrlKey || event.metaKey);
+      } else {
+        // Normal click: toggle single selection
+        onToggleSelection(proposalId);
+        setLastClickedIndex(index);
+      }
+    },
+    [flattenedItems, lastClickedIndex, onSelectRange, onToggleSelection]
   );
 
   // Set up virtualizer with dynamic measurement support
@@ -191,6 +223,7 @@ export function PreviewTable({
                   role="button"
                   tabIndex={0}
                   aria-expanded={!isCollapsed}
+                  aria-live="polite"
                   aria-label={`${config.label} group, ${item.count} items. ${isCollapsed ? "Click to expand" : "Click to collapse"}`}
                   className={cn(
                     "absolute top-0 left-0 w-full flex items-center px-4 py-2 border-y cursor-pointer hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -237,6 +270,9 @@ export function PreviewTable({
                   proposal={item.proposal}
                   isSelected={selectedIds.has(item.proposal.id)}
                   onToggleSelection={() => onToggleSelection(item.proposal.id)}
+                  onSelectionClick={(event) =>
+                    handleSelection(item.proposal.id, virtualItem.index, event)
+                  }
                   aiSuggestion={aiSuggestion}
                   isExpanded={isRowExpanded}
                   onToggleExpand={() => toggleRowExpansion(item.proposal.id)}
