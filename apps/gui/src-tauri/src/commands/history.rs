@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
+use ts_rs::TS;
 use uuid::Uuid;
 
 use super::rename::{BatchRenameResult, FileRenameResult, RenameOutcome};
@@ -44,7 +45,8 @@ impl Serialize for HistoryError {
 // =============================================================================
 
 /// Operation type
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "lowercase")]
 pub enum OperationType {
     Rename,
@@ -52,7 +54,8 @@ pub enum OperationType {
 }
 
 /// Record of a single file operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct FileHistoryRecord {
     pub original_path: String,
@@ -65,7 +68,8 @@ pub struct FileHistoryRecord {
 }
 
 /// Summary of an operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct OperationSummary {
     pub succeeded: usize,
@@ -76,7 +80,8 @@ pub struct OperationSummary {
 }
 
 /// A single operation history entry
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct OperationHistoryEntry {
     pub id: String,
@@ -93,7 +98,8 @@ pub struct OperationHistoryEntry {
 }
 
 /// The history store containing all entries
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryStore {
     pub version: String,
@@ -112,7 +118,8 @@ impl Default for HistoryStore {
 }
 
 /// Result of an undo operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct UndoResult {
     pub success: bool,

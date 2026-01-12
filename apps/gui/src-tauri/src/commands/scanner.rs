@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use thiserror::Error;
+use ts_rs::TS;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
@@ -30,7 +31,8 @@ impl Serialize for ScanError {
 }
 
 /// File category based on extension
-#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq, Eq, Hash, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "lowercase")]
 pub enum FileCategory {
     Image,
@@ -44,7 +46,8 @@ pub enum FileCategory {
 }
 
 /// Metadata capability level
-#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "lowercase")]
 pub enum MetadataCapability {
     None,
@@ -54,7 +57,8 @@ pub enum MetadataCapability {
 }
 
 /// Information about a scanned file
-#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct FileInfo {
     /// Full absolute path to the file
@@ -82,7 +86,8 @@ pub struct FileInfo {
 }
 
 /// Options for folder scanning
-#[derive(Debug, Clone, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Deserialize, Default, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ScanOptions {
     /// Scan subdirectories recursively (default: false)
@@ -94,7 +99,8 @@ pub struct ScanOptions {
 }
 
 /// Result of a folder scan
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ScanResult {
     /// List of scanned files
@@ -116,7 +122,8 @@ pub struct ScanResult {
 // =============================================================================
 
 /// Progress event payload for scan operations
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ScanProgress {
     /// Scan session ID
@@ -137,7 +144,8 @@ pub struct ScanProgress {
 }
 
 /// Phases of scanning operation
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "kebab-case")]
 pub enum ScanPhase {
     /// Initial phase - preparing to scan

@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use thiserror::Error;
+use ts_rs::TS;
 use uuid::Uuid;
 
 use super::scanner::FileInfo;
@@ -43,7 +44,8 @@ impl Serialize for RenameError {
 // =============================================================================
 
 /// Status of a rename proposal
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "kebab-case")]
 pub enum RenameStatus {
     Ready,
@@ -57,7 +59,8 @@ pub enum RenameStatus {
 ///
 /// - 'rename-only': Files stay in their current locations, only names change (safest)
 /// - 'organize': Files are moved to new locations based on folder patterns
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "kebab-case")]
 pub enum ReorganizationMode {
     /// Files stay in place, only names change (default, safest option)
@@ -68,7 +71,8 @@ pub enum ReorganizationMode {
 }
 
 /// Options for the "organize" mode.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct OrganizeOptions {
     /// Base destination directory for organized files.
@@ -92,7 +96,8 @@ fn default_context_depth() -> i32 {
 }
 
 /// Action type for a file in the preview.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "kebab-case")]
 pub enum FileActionType {
     /// File will only be renamed (stays in same folder)
@@ -108,11 +113,13 @@ pub enum FileActionType {
 }
 
 /// Conflict information for a file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct FileConflict {
     /// The type of conflict
     #[serde(rename = "type")]
+    #[ts(rename = "type")]
     pub conflict_type: String,
     /// Human-readable description
     pub message: String,
@@ -125,7 +132,8 @@ pub struct FileConflict {
 }
 
 /// Summary of preview actions by type.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewActionSummary {
     pub rename_count: usize,
@@ -136,7 +144,8 @@ pub struct PreviewActionSummary {
 }
 
 /// Issue found with a rename proposal
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct RenameIssue {
     /// Issue code for programmatic handling
@@ -149,7 +158,8 @@ pub struct RenameIssue {
 }
 
 /// A single file rename proposal
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct RenameProposal {
     /// Unique identifier for selection tracking
@@ -188,7 +198,8 @@ fn default_action_type() -> FileActionType {
 }
 
 /// Summary statistics for a rename preview
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewSummary {
     pub total: usize,
@@ -200,7 +211,8 @@ pub struct PreviewSummary {
 }
 
 /// Complete rename preview result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct RenamePreview {
     /// All file proposals
@@ -220,7 +232,8 @@ pub struct RenamePreview {
 }
 
 /// Outcome of a single file rename
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "lowercase")]
 pub enum RenameOutcome {
     Success,
@@ -229,7 +242,8 @@ pub enum RenameOutcome {
 }
 
 /// Result of renaming a single file
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct FileRenameResult {
     pub proposal_id: String,
@@ -245,7 +259,8 @@ pub struct FileRenameResult {
 }
 
 /// Summary of batch rename results
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct BatchRenameSummary {
     pub total: usize,
@@ -255,7 +270,8 @@ pub struct BatchRenameSummary {
 }
 
 /// Complete result of a batch rename operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct BatchRenameResult {
     pub success: bool,
@@ -271,7 +287,8 @@ pub struct BatchRenameResult {
 // =============================================================================
 
 /// Case normalization style for filenames
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "kebab-case")]
 pub enum CaseStyle {
     /// No transformation - keep original casing
@@ -296,7 +313,8 @@ pub enum CaseStyle {
 }
 
 /// Options for generating a preview
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratePreviewOptions {
     /// Custom date format (default: YYYY-MM-DD)
@@ -323,7 +341,8 @@ pub struct GeneratePreviewOptions {
 }
 
 /// Options for executing renames
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ExecuteRenameOptions {
     /// IDs of proposals to rename (if empty, renames all ready)
@@ -374,10 +393,12 @@ fn is_valid_filename(name: &str) -> bool {
 const MAX_FILENAME_LENGTH: usize = 255;
 
 /// Information about a sanitization change
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct SanitizeChange {
     #[serde(rename = "type")]
+    #[ts(rename = "type")]
     pub change_type: String,
     pub original: String,
     pub replacement: String,
@@ -385,7 +406,8 @@ pub struct SanitizeChange {
 }
 
 /// Result of sanitizing a filename
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct SanitizeResult {
     pub sanitized: String,
