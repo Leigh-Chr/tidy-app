@@ -35,7 +35,7 @@ export function TitleBar({ showBreadcrumb = true, isMaximized = false, onMaximiz
   };
 
   return (
-    <div className={`flex h-11 items-center border-b border-border/50 bg-gradient-to-b from-muted/50 to-background/80 backdrop-blur-md ${!isMaximized ? 'rounded-t-xl' : ''}`}>
+    <div className={`flex h-11 items-center border-b border-border/50 bg-muted/30 ${!isMaximized ? 'rounded-t-xl' : ''}`}>
       {/* Left side - App title and version (draggable) */}
       <div
         role="presentation"
@@ -69,14 +69,14 @@ export function TitleBar({ showBreadcrumb = true, isMaximized = false, onMaximiz
       {/* Window controls */}
       <div className="flex items-center h-full ml-1">
         <button
-          className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-150"
           onClick={handleMinimize}
           aria-label="Minimize"
         >
           <Minus className="h-4 w-4" />
         </button>
         <button
-          className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-150"
           onClick={handleMaximize}
           aria-label={isMaximized ? "Restore" : "Maximize"}
         >
@@ -87,7 +87,7 @@ export function TitleBar({ showBreadcrumb = true, isMaximized = false, onMaximiz
           )}
         </button>
         <button
-          className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors"
+          className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-white hover:bg-red-500 transition-all duration-150"
           onClick={handleClose}
           aria-label="Close"
         >

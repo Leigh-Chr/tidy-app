@@ -8,7 +8,7 @@
 
 import { useState, useCallback, useEffect, DragEvent } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { Loader2, FolderOpen } from "lucide-react";
+import { Loader2, FolderOpen, Folder } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -184,8 +184,8 @@ export function DropZone({
     "transition-all duration-200 ease-out",
     // Default state
     !isHover && !showLoading && !disabled && "border-muted-foreground/25 bg-muted/50 hover:border-muted-foreground/40",
-    // Hover state (drag over) - enhanced feedback
-    isHover && "border-primary bg-primary/10 scale-[1.02] shadow-lg shadow-primary/20 ring-4 ring-primary/10",
+    // Hover state (drag over)
+    isHover && "border-primary bg-primary/5",
     // Disabled state
     disabled && "opacity-50 cursor-not-allowed border-muted-foreground/25 bg-muted/30",
     // Loading state
@@ -210,39 +210,37 @@ export function DropZone({
                 className="h-5 w-5 text-primary animate-spin"
                 aria-hidden="true"
               />
-              <span className="text-muted-foreground">Scanning files...</span>
+              <span className="text-muted-foreground">Exploring your files...</span>
             </div>
           </div>
         ) : isHover ? (
-          // Hover/drag over state - enhanced visual feedback
+          // Hover/drag over state
           <div className="space-y-3">
             <FolderOpen
-              className="h-12 w-12 mx-auto text-primary animate-bounce"
+              className="h-12 w-12 mx-auto text-primary"
               aria-hidden="true"
             />
-            <p className="text-primary font-semibold text-lg">Drop to scan</p>
-            <p className="text-sm text-muted-foreground">
-              Release to start scanning
-            </p>
+            <p className="text-primary font-medium">Release to begin</p>
           </div>
         ) : (
           // Default state
-          <div className="space-y-3">
-            <p className="text-muted-foreground">Drop a folder here</p>
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-sm text-muted-foreground">or</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleBrowseClick}
-                disabled={disabled}
-              >
-                Browse
-              </Button>
+          <div className="space-y-4">
+            <Folder
+              className="h-10 w-10 mx-auto text-muted-foreground/40"
+              aria-hidden="true"
+            />
+            <div className="space-y-1">
+              <p className="text-foreground/80 font-medium">Drop a folder here</p>
+              <p className="text-sm text-muted-foreground/70">or browse to select one</p>
             </div>
-            <p className="text-xs text-muted-foreground mt-4">
-              Your files never leave your computer
-            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBrowseClick}
+              disabled={disabled}
+            >
+              Browse folders
+            </Button>
           </div>
         )}
       </div>

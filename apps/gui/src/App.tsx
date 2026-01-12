@@ -1,6 +1,5 @@
 import { useEffect, useCallback, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Lock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/stores/app-store";
@@ -18,7 +17,6 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 function App() {
   const {
-    versionInfo,
     error,
     loadVersion,
     loadConfig,
@@ -126,9 +124,9 @@ function App() {
         {!hasFolder && (
           <Card className="mx-auto max-w-2xl">
             <CardHeader>
-              <CardTitle>Welcome to tidy-app</CardTitle>
+              <CardTitle>Bring order to your files</CardTitle>
               <CardDescription>
-                Intelligent file organization tool. Drag and drop a folder to get started.
+                Drop a folder to get started. Your files stay private and never leave your computer.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -149,12 +147,6 @@ function App() {
                 className="mt-6"
               />
 
-              {/* Privacy message */}
-              <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Lock className="h-4 w-4" aria-hidden="true" />
-                <span>Your files never leave your computer</span>
-              </div>
-
               {/* Error display only */}
               {error && (
                 <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -167,7 +159,7 @@ function App() {
 
         {/* Preview Panel - shown when folder is scanned with results */}
         {hasResults && (
-          <div className="mx-auto max-w-4xl space-y-4">
+          <div className="mx-auto max-w-4xl space-y-6">
             {/* File Statistics Summary */}
             <FileStats files={filteredFiles} label="Files found" />
 
@@ -210,7 +202,7 @@ function App() {
 
         {/* Empty state - shown when folder scanned but no files found */}
         {isEmpty && (
-          <div className="mx-auto max-w-2xl space-y-4">
+          <div className="mx-auto max-w-2xl space-y-6">
             {/* Empty FileStats component shows "No files found" */}
             <FileStats files={[]} />
 
@@ -274,10 +266,9 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className={`border-t border-border/50 bg-muted/30 px-6 py-3 ${!isMaximized ? 'rounded-b-xl' : ''}`}>
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>Intelligent file organization</span>
-          <span>v{versionInfo?.version ?? "0.2.0"}</span>
+      <footer className={`border-t border-border/50 bg-muted/20 px-6 py-3 ${!isMaximized ? 'rounded-b-xl' : ''}`}>
+        <div className="flex items-center justify-center text-xs text-muted-foreground/60">
+          <span>Everything happens locally on your computer</span>
         </div>
       </footer>
 

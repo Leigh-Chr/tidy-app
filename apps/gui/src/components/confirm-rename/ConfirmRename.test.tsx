@@ -1,6 +1,10 @@
 /**
  * Tests for ConfirmRename component
  * Story 6.4 - Task 7
+ *
+ * Updated for "Calm & Confident" design:
+ * - Simplified dialog text
+ * - Friendly warning messages
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -58,7 +62,7 @@ describe("ConfirmRename", () => {
       );
 
       expect(screen.getByTestId("confirm-rename-count")).toHaveTextContent(
-        "5 files will be renamed"
+        "5 files selected."
       );
     });
 
@@ -73,7 +77,7 @@ describe("ConfirmRename", () => {
       );
 
       expect(screen.getByTestId("confirm-rename-count")).toHaveTextContent(
-        "1 file will be renamed"
+        "1 file selected."
       );
     });
   });
@@ -91,7 +95,7 @@ describe("ConfirmRename", () => {
       );
 
       expect(screen.getByTestId("confirm-rename-warning")).toBeInTheDocument();
-      expect(screen.getByText(/2 files with conflicts/)).toBeInTheDocument();
+      expect(screen.getByText(/2 with naming conflicts/)).toBeInTheDocument();
     });
 
     it("shows warning when there is missing data", () => {
@@ -106,7 +110,7 @@ describe("ConfirmRename", () => {
       );
 
       expect(screen.getByTestId("confirm-rename-warning")).toBeInTheDocument();
-      expect(screen.getByText(/3 files with missing data/)).toBeInTheDocument();
+      expect(screen.getByText(/3 missing required data/)).toBeInTheDocument();
     });
 
     it("shows both conflict and missing data warnings", () => {
@@ -120,8 +124,8 @@ describe("ConfirmRename", () => {
         />
       );
 
-      expect(screen.getByText(/2 files with conflicts/)).toBeInTheDocument();
-      expect(screen.getByText(/1 file with missing data/)).toBeInTheDocument();
+      expect(screen.getByText(/2 with naming conflicts/)).toBeInTheDocument();
+      expect(screen.getByText(/1 missing required data/)).toBeInTheDocument();
     });
 
     it("does not show warning when no issues", () => {
@@ -166,7 +170,7 @@ describe("ConfirmRename", () => {
       expect(screen.getByTestId("confirm-rename-cancel")).toBeInTheDocument();
     });
 
-    it("displays Confirm button with file count", () => {
+    it("displays Rename confirm button", () => {
       render(
         <ConfirmRename
           open={true}
@@ -178,22 +182,7 @@ describe("ConfirmRename", () => {
 
       const confirmButton = screen.getByTestId("confirm-rename-confirm");
       expect(confirmButton).toBeInTheDocument();
-      expect(confirmButton).toHaveTextContent("Rename 5 Files");
-    });
-
-    it("uses singular form in confirm button for single file", () => {
-      render(
-        <ConfirmRename
-          open={true}
-          fileCount={1}
-          onConfirm={() => {}}
-          onCancel={() => {}}
-        />
-      );
-
-      expect(screen.getByTestId("confirm-rename-confirm")).toHaveTextContent(
-        "Rename 1 File"
-      );
+      expect(confirmButton).toHaveTextContent("Rename");
     });
 
     it("calls onConfirm when confirm button clicked", async () => {

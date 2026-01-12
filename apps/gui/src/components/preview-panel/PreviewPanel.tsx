@@ -1,11 +1,10 @@
 /**
  * Preview Panel Component
  *
- * Orchestrates all preview components: template selector, preview table,
- * action bar, confirmation dialog, progress display, and AI analysis.
+ * Orchestrates all preview components with a simplified, focused UI.
+ * Options are collapsed by default for a cleaner experience.
  *
  * Story 6.4 - Task 10: Main integration component
- * Enhanced with reorganization mode support for folder organization.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -16,10 +15,7 @@ import { PreviewTable } from "@/components/preview-table/PreviewTable";
 import { ActionBar } from "@/components/action-bar/ActionBar";
 import { ConfirmRename } from "@/components/confirm-rename/ConfirmRename";
 import { RenameProgress } from "@/components/rename-progress/RenameProgress";
-import { TemplateSelector } from "@/components/template-selector/TemplateSelector";
-import { ReorganizationModeSelector } from "@/components/reorganization-mode/ReorganizationModeSelector";
-import { AiAnalysisBar } from "@/components/ai-analysis";
-import { FolderTreePreview } from "@/components/folder-tree-preview";
+import { PreviewOptions } from "@/components/preview-options";
 import {
   PreviewToolbar,
   type SortField,
@@ -224,12 +220,12 @@ export function PreviewPanel() {
       const { succeeded, failed } = result.data.summary;
 
       if (failed === 0) {
-        toast.success(`Successfully renamed ${succeeded} file${succeeded !== 1 ? "s" : ""}`);
+        toast.success(`${succeeded} file${succeeded !== 1 ? "s" : ""} renamed`);
       } else {
-        toast.warning(`Renamed ${succeeded} file${succeeded !== 1 ? "s" : ""}, ${failed} failed`);
+        toast.warning(`${succeeded} renamed, ${failed} failed`);
       }
     } else {
-      toast.error(`Rename failed: ${result.error.message}`);
+      toast.error(`Something went wrong: ${result.error.message}`);
     }
   }, [applyRenames]);
 
@@ -310,12 +306,12 @@ export function PreviewPanel() {
   if (previewStatus === "generating") {
     return (
       <div
-        className="flex items-center justify-center py-12 text-muted-foreground"
+        className="flex items-center justify-center py-16 text-muted-foreground"
         data-testid="preview-panel-loading"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span>Generating preview...</span>
+          <span>Preparing preview...</span>
         </div>
       </div>
     );
@@ -325,11 +321,11 @@ export function PreviewPanel() {
   if (previewStatus === "error" && previewError) {
     return (
       <div
-        className="rounded-md bg-destructive/10 p-4 text-sm text-destructive"
+        className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive"
         data-testid="preview-panel-error"
       >
-        <p className="font-medium">Failed to generate preview</p>
-        <p className="mt-1">{previewError}</p>
+        <p className="font-medium">Something went wrong</p>
+        <p className="mt-1 text-destructive/80">{previewError}</p>
       </div>
     );
   }
@@ -341,51 +337,26 @@ export function PreviewPanel() {
 
   const selectedCount = selectedProposalIds.size;
   const isApplying = previewStatus === "applying";
+  const filteredFiles = getFilteredFiles();
 
   return (
-    <div className="flex flex-col gap-4" data-testid="preview-panel">
-      {/* Template Selector and Reorganization Mode */}
+    <div className="flex flex-col gap-6" data-testid="preview-panel">
+      {/* Collapsible Options Section */}
       {config && (
-        <div className="flex flex-col gap-4">
-          {/* Template Selector Row */}
-          {config.templates.length > 0 && (
-            <TemplateSelector
-              templates={config.templates}
-              selectedId={selectedTemplateId}
-              onSelect={handleTemplateChange}
-              disabled={isApplying}
-            />
-          )}
-
-          {/* Reorganization Mode Selector */}
-          <ReorganizationModeSelector
-            mode={reorganizationMode}
-            onModeChange={handleModeChange}
-            organizeOptions={organizeOptions ?? undefined}
-            onOrganizeOptionsChange={handleOrganizeOptionsChange}
-            folderStructures={config.folderStructures ?? []}
-            selectedStructureId={selectedFolderStructureId}
-            onStructureSelect={handleFolderStructureChange}
-            baseDirectory={selectedFolder ?? undefined}
-            disabled={isApplying}
-          />
-
-          {/* Folder Tree Preview (only in organize mode) */}
-          {reorganizationMode === "organize" && filteredPreview && (
-            <FolderTreePreview
-              proposals={filteredPreview.proposals}
-              baseDirectory={selectedFolder ?? undefined}
-              maxFolders={8}
-              maxFilesPerFolder={3}
-            />
-          )}
-        </div>
-      )}
-
-      {/* AI Analysis Bar */}
-      {scanResult && getFilteredFiles().length > 0 && (
-        <AiAnalysisBar
-          files={getFilteredFiles()}
+        <PreviewOptions
+          templates={config.templates}
+          selectedTemplateId={selectedTemplateId}
+          onTemplateChange={handleTemplateChange}
+          reorganizationMode={reorganizationMode}
+          onModeChange={handleModeChange}
+          organizeOptions={organizeOptions ?? undefined}
+          onOrganizeOptionsChange={handleOrganizeOptionsChange}
+          folderStructures={config.folderStructures ?? []}
+          selectedStructureId={selectedFolderStructureId}
+          onStructureSelect={handleFolderStructureChange}
+          baseDirectory={selectedFolder ?? undefined}
+          proposals={filteredPreview?.proposals}
+          files={filteredFiles}
           disabled={isApplying}
         />
       )}
@@ -402,9 +373,7 @@ export function PreviewPanel() {
 
       {/* Preview Table */}
       {!lastRenameResult && filteredPreview && (
-        <div
-          className="border rounded-lg overflow-hidden min-h-[300px] max-h-[50vh] flex flex-col"
-        >
+        <div className="border rounded-lg overflow-hidden min-h-[300px] max-h-[50vh] flex flex-col bg-card">
           {/* Search/Sort/Filter Toolbar */}
           <PreviewToolbar
             searchQuery={searchQuery}

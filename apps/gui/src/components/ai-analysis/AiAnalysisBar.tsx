@@ -7,7 +7,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useAppStore, templateNeedsAi } from "@/stores/app-store";
 import type { FileInfo } from "@/lib/tauri";
+import { onAnalysisProgress } from "@/lib/tauri";
+import { cn } from "@/lib/utils";
 
 // Supported file extensions for AI analysis (defined outside component for referential stability)
 const SUPPORTED_TEXT_EXTENSIONS = ["txt", "md", "json", "yaml", "yml", "py", "js", "ts", "tsx", "jsx", "html", "css", "xml", "csv"];
@@ -34,11 +36,13 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
     config,
     preview,
     aiAnalysisStatus,
+    aiAnalysisProgress,
     aiSuggestions,
     lastAnalysisResult,
     aiAnalysisError,
     analyzeFilesWithAi,
     clearAiSuggestions,
+    setAiAnalysisProgress,
     llmStatus,
     checkLlmHealth,
   } = useAppStore();
@@ -52,6 +56,21 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
       setHasCheckedHealth(true);
     }
   }, [config?.ollama.enabled, hasCheckedHealth, checkLlmHealth]);
+
+  // Listen for AI analysis progress events
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    onAnalysisProgress((progress) => {
+      setAiAnalysisProgress(progress);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [setAiAnalysisProgress]);
 
   // Check if current template uses AI placeholders
   const currentTemplateUsesAi = useMemo(() => {
@@ -169,83 +188,79 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
   const providerName = config.ollama.provider === "openai" ? "OpenAI" : "Ollama";
 
   return (
-    <div
-      className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border"
-      data-testid="ai-analysis-bar"
-    >
-      {/* AI Icon and Status */}
-      <div className="flex items-center gap-2">
-        <div
-          className={`w-2 h-2 rounded-full ${
-            isLlmAvailable ? "bg-green-500" : llmStatus === "checking" ? "bg-yellow-500 animate-pulse" : "bg-gray-400"
-          }`}
-        />
-        <span className="text-sm font-medium">AI Analysis</span>
-        <Badge variant="outline" className="text-xs">
-          {providerName}
-        </Badge>
-      </div>
-
-      {/* Analyzing Progress */}
-      {isAnalyzing && (
-        <div className="flex-1 flex items-center gap-2">
-          <Progress value={33} className="flex-1 h-2" />
-          <span className="text-xs text-muted-foreground">Analyzing...</span>
+    <TooltipProvider>
+      <div
+        className={cn(
+          "flex items-center gap-3 p-3 rounded-lg border transition-colors",
+          hasSuccessfulResults
+            ? "bg-purple-50/50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800"
+            : "bg-muted/50"
+        )}
+        data-testid="ai-analysis-bar"
+      >
+        {/* AI Icon and Status - Simplified */}
+        <div className="flex items-center gap-2">
+          <Sparkles className={cn(
+            "h-4 w-4",
+            isLlmAvailable ? "text-purple-500" : "text-muted-foreground"
+          )} />
+          <span className="text-sm font-medium">AI</span>
+          {!isLlmAvailable && llmStatus !== "checking" && (
+            <span className="text-xs text-muted-foreground">(offline)</span>
+          )}
+          {llmStatus === "checking" && (
+            <span className="text-xs text-muted-foreground animate-pulse">connecting...</span>
+          )}
         </div>
-      )}
 
-      {/* Proactive empty state - shown BEFORE analysis when no files are analyzable */}
-      {!isAnalyzing && !hasResults && analyzableFilesInfo.allUnsupported && files.length > 0 && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center gap-2 px-2 py-1 bg-amber-100 dark:bg-amber-900/50 rounded text-amber-700 dark:text-amber-300 cursor-help">
-                <AlertCircle className="w-4 h-4" aria-hidden="true" />
-                <span className="text-xs font-medium">No analyzable files</span>
+        {/* Analyzing Progress */}
+        {isAnalyzing && (
+          <div className="flex-1 flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <Progress
+                value={aiAnalysisProgress?.percent ?? 0}
+                className="flex-1 h-2"
+              />
+              <span className="text-xs text-muted-foreground whitespace-nowrap min-w-[4rem] text-right">
+                {aiAnalysisProgress
+                  ? `${aiAnalysisProgress.processed}/${aiAnalysisProgress.total}`
+                  : "Starting..."}
+              </span>
+            </div>
+            {aiAnalysisProgress?.currentFile && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span className="truncate max-w-[200px]" title={aiAnalysisProgress.currentFile}>
+                  {aiAnalysisProgress.currentFile.split("/").pop()}
+                </span>
               </div>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-sm">
-              <p className="font-medium mb-1">These file types cannot be analyzed</p>
-              <p className="text-xs mb-2">
-                AI analysis supports: .txt, .md, .json, .yaml, .py, .js, .ts, etc.
-              </p>
-              {analyzableFilesInfo.hasImagesWithoutVision && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Tip: Enable &quot;Vision Model&quot; in AI settings to analyze images.
-                </p>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+            )}
+          </div>
+        )}
 
-      {/* Proactive hint - files analyzable but vision disabled */}
-      {!isAnalyzing && !hasResults && !analyzableFilesInfo.allUnsupported && analyzableFilesInfo.hasImagesWithoutVision && (
-        <TooltipProvider>
+        {/* File compatibility hint - simplified, only show when relevant */}
+        {!isAnalyzing && !hasResults && analyzableFilesInfo.totalAnalyzable < files.length && files.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-400 dark:border-amber-600 cursor-help">
-                {analyzableFilesInfo.totalAnalyzable}/{files.length} analyzable
-              </Badge>
+              <span className="text-xs text-muted-foreground cursor-help">
+                {analyzableFilesInfo.totalAnalyzable}/{files.length} supported
+              </span>
             </TooltipTrigger>
             <TooltipContent className="max-w-sm">
-              <p className="font-medium mb-1">Some files cannot be analyzed</p>
               <p className="text-xs">
-                Enable &quot;Vision Model&quot; in AI settings to analyze {files.length - analyzableFilesInfo.totalAnalyzable} image files.
+                Supports: .txt, .md, .json, .py, .js, .ts, etc.
+                {analyzableFilesInfo.hasImagesWithoutVision && " Enable Vision Model for images."}
               </p>
             </TooltipContent>
           </Tooltip>
-        </TooltipProvider>
-      )}
+        )}
 
-      {/* Active AI indicator with preview - shown when AI suggestions are being used */}
-      {hasSuccessfulResults && (
-        <TooltipProvider>
+        {/* Active AI indicator with preview - shown when AI suggestions are being used */}
+        {hasSuccessfulResults && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/50 rounded text-purple-700 dark:text-purple-300 cursor-help">
+              <div className="flex items-center gap-2 px-2 py-1 bg-purple-200 dark:bg-purple-800/50 rounded text-purple-800 dark:text-purple-200 cursor-help">
                 <Check className="w-4 h-4" aria-hidden="true" />
-                <span className="text-xs font-medium">AI names active ({aiSuggestions.size})</span>
+                <span className="text-xs font-medium">Using AI suggestions ({aiSuggestions.size})</span>
               </div>
             </TooltipTrigger>
             <TooltipContent className="max-w-md p-0">
@@ -274,78 +289,22 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
               </div>
             </TooltipContent>
           </Tooltip>
-        </TooltipProvider>
-      )}
+        )}
 
-      {/* Results Summary */}
-      {hasResults && lastAnalysisResult && (
-        <div className="flex items-center gap-2 text-sm">
-          {lastAnalysisResult.analyzed > 0 ? (
-            <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-              {lastAnalysisResult.analyzed} analyzed
-            </Badge>
-          ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-xs text-yellow-600 dark:text-yellow-400 border-yellow-600 dark:border-yellow-500 cursor-help">
-                    0 analyzed
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-sm">
-                  <p className="font-medium mb-1">No files could be analyzed</p>
-                  <p className="text-xs">Supported text files: .txt, .md, .json, .yaml, .py, .js, .ts, etc.</p>
-                  <p className="text-xs">Images (.jpg, .png, .gif, .webp) require vision model enabled in settings.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          {lastAnalysisResult.skipped > 0 && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-xs cursor-help text-orange-600 dark:text-orange-400 border-orange-600 dark:border-orange-500">
-                    {lastAnalysisResult.skipped} skipped
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-sm">
-                  <p className="font-medium mb-1">Files were skipped</p>
-                  <p className="text-xs">These files have unsupported types (like .pdf, .docx, .mp4, etc.)</p>
-                  <p className="text-xs mt-1">For images, enable &quot;Vision Model&quot; in AI settings.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          {lastAnalysisResult.failed > 0 && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="destructive" className="text-xs cursor-help">
-                    {lastAnalysisResult.failed} failed
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-md">
-                  <p className="font-medium mb-1">Analysis errors:</p>
-                  <ul className="text-xs space-y-1">
-                    {lastAnalysisResult.results
-                      .filter(r => r.error && !r.skipped)
-                      .slice(0, 5)
-                      .map((r, i) => (
-                        <li key={i} className="truncate">
-                          <span className="font-mono">{r.filePath.split('/').pop()}</span>: {r.error}
-                        </li>
-                      ))}
-                  </ul>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
-      )}
+        {/* Results Summary - Simplified */}
+        {hasResults && lastAnalysisResult && !hasSuccessfulResults && (
+          <span className="text-xs text-muted-foreground">
+            {lastAnalysisResult.analyzed > 0
+              ? `${lastAnalysisResult.analyzed} analyzed`
+              : lastAnalysisResult.skipped > 0
+                ? `${lastAnalysisResult.skipped} skipped (unsupported)`
+                : `${lastAnalysisResult.failed} failed`
+            }
+          </span>
+        )}
 
-      {/* Error */}
-      {aiAnalysisStatus === "error" && aiAnalysisError && (
-        <TooltipProvider>
+        {/* Error */}
+        {aiAnalysisStatus === "error" && aiAnalysisError && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge variant="destructive" className="cursor-help">
@@ -356,16 +315,14 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
               <p className="max-w-xs">{aiAnalysisError}</p>
             </TooltipContent>
           </Tooltip>
-        </TooltipProvider>
-      )}
+        )}
 
-      {/* Spacer */}
-      <div className="flex-1" />
+        {/* Spacer */}
+        <div className="flex-1" />
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
-        {hasSuccessfulResults && (
-          <TooltipProvider>
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          {hasSuccessfulResults && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -382,21 +339,19 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
                 <p>Remove AI suggestions and use template-based names</p>
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-        )}
-        {hasResults && !hasSuccessfulResults && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClear}
-            disabled={isAnalyzing}
-            data-testid="clear-ai-analysis"
-          >
-            Clear
-          </Button>
-        )}
+          )}
+          {hasResults && !hasSuccessfulResults && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              disabled={isAnalyzing}
+              data-testid="clear-ai-analysis"
+            >
+              Clear
+            </Button>
+          )}
 
-        <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="flex items-center gap-1">
@@ -404,7 +359,7 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
                   <AlertCircle className="h-4 w-4 text-amber-500" />
                 )}
                 <Button
-                  variant={hasResults ? "outline" : "default"}
+                  variant={hasResults ? "ghost" : "secondary"}
                   size="sm"
                   onClick={handleAnalyze}
                   disabled={disabled || isAnalyzing || !isLlmAvailable || files.length === 0}
@@ -437,8 +392,8 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
               ) : null}
             </TooltipContent>
           </Tooltip>
-        </TooltipProvider>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

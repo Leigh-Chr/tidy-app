@@ -29,31 +29,30 @@ interface OnboardingStep {
 const STEPS: OnboardingStep[] = [
   {
     icon: <Folder className="h-12 w-12 text-blue-500" />,
-    title: "Select a Folder",
+    title: "Choose a folder",
     description:
-      "Start by selecting a folder containing the files you want to organize. You can drag and drop a folder or use the folder picker.",
-    tip: "Your recent folders will appear for quick access.",
+      "Drop a folder onto the app or browse to select one. Tidy will scan its contents and show you what can be organized.",
+    tip: "Recent folders appear for quick access.",
   },
   {
     icon: <Wand2 className="h-12 w-12 text-purple-500" />,
-    title: "Choose a Template",
+    title: "Pick a naming pattern",
     description:
-      "Templates define how your files will be renamed. Use placeholders like {date}, {camera}, or {title} to create meaningful names.",
-    tip: "You can create custom templates in Settings.",
+      "Templates define how files get renamed. Use placeholders like {date} or {title} to create consistent, meaningful names.",
+    tip: "Create custom templates in Settings.",
   },
   {
     icon: <FolderTree className="h-12 w-12 text-green-500" />,
-    title: "Organize Mode",
+    title: "Organize into folders",
     description:
-      "Optionally, enable Organize mode to automatically sort files into folders based on categories, dates, or custom rules.",
-    tip: "Preview the folder structure before applying changes.",
+      "Optionally sort files into folders by date, type, or custom rules. See the structure before committing.",
   },
   {
     icon: <Sparkles className="h-12 w-12 text-amber-500" />,
-    title: "AI-Powered Suggestions",
+    title: "Let AI help",
     description:
-      "Use the AI analysis feature to get smart suggestions for file names based on content, when available.",
-    tip: "Requires an AI provider to be configured in Settings.",
+      "When enabled, AI can suggest meaningful names based on file contents.",
+    tip: "Configure AI in Settings.",
   },
 ];
 
@@ -118,9 +117,9 @@ export function Onboarding({ forceShow = false, onComplete }: OnboardingProps) {
         onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="text-center pb-2">
-          <DialogTitle className="text-lg">Welcome to Tidy</DialogTitle>
+          <DialogTitle className="text-lg">Welcome</DialogTitle>
           <DialogDescription>
-            Learn how to organize your files in 4 easy steps
+            A quick tour of how Tidy works
           </DialogDescription>
         </DialogHeader>
 

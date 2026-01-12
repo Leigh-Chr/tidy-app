@@ -152,17 +152,17 @@ describe("FileStats", () => {
       expect(screen.getByTestId("file-stats-empty")).toBeInTheDocument();
     });
 
-    it("displays No files found message", () => {
+    it("displays No files here message", () => {
       render(<FileStats files={[]} />);
 
-      expect(screen.getByText("No files found")).toBeInTheDocument();
+      expect(screen.getByText("No files here")).toBeInTheDocument();
     });
 
     it("displays helpful suggestion message", () => {
       render(<FileStats files={[]} />);
 
       expect(
-        screen.getByText("Try adjusting your filters or scanning a different folder")
+        screen.getByText("Try different filters or another folder")
       ).toBeInTheDocument();
     });
 

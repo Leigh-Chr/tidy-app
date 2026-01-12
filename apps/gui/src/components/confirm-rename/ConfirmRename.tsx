@@ -45,12 +45,12 @@ export function ConfirmRename({
     <AlertDialog open={open} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent data-testid="confirm-rename-dialog">
         <AlertDialogHeader>
-          <AlertDialogTitle>Confirm Rename</AlertDialogTitle>
+          <AlertDialogTitle>Ready to rename?</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               <p data-testid="confirm-rename-count">
                 <span className="font-semibold text-foreground">{fileCount}</span>{" "}
-                file{fileCount !== 1 ? "s" : ""} will be renamed.
+                file{fileCount !== 1 ? "s" : ""} selected.
               </p>
 
               {hasIssues && (
@@ -60,25 +60,24 @@ export function ConfirmRename({
                 >
                   <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
                   <div className="text-sm">
-                    <p className="font-medium">Some files have issues:</p>
+                    <p className="font-medium">A few files need attention:</p>
                     <ul className="mt-1 list-disc list-inside">
                       {summary.conflicts > 0 && (
-                        <li>{summary.conflicts} file{summary.conflicts !== 1 ? "s" : ""} with conflicts</li>
+                        <li>{summary.conflicts} with naming conflicts</li>
                       )}
                       {summary.missingData > 0 && (
-                        <li>{summary.missingData} file{summary.missingData !== 1 ? "s" : ""} with missing data</li>
+                        <li>{summary.missingData} missing required data</li>
                       )}
                     </ul>
                     <p className="mt-1 text-xs">
-                      Only files without issues will be renamed.
+                      These will be skipped.
                     </p>
                   </div>
                 </div>
               )}
 
               <p className="text-sm text-muted-foreground">
-                You can undo this operation from the history. We recommend having backups
-                of important files.
+                You can undo this from the history.
               </p>
             </div>
           </AlertDialogDescription>
@@ -91,7 +90,7 @@ export function ConfirmRename({
             onClick={onConfirm}
             data-testid="confirm-rename-confirm"
           >
-            Rename {fileCount} File{fileCount !== 1 ? "s" : ""}
+            Rename
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
