@@ -203,9 +203,11 @@ export type UpdateTemplateInput = z.infer<typeof updateTemplateInputSchema>;
 export const fileTypeDefaultsSchema = z.object({
   [FileCategory.IMAGE]: z.uuid().optional(),
   [FileCategory.DOCUMENT]: z.uuid().optional(),
-  [FileCategory.PDF]: z.uuid().optional(),
-  [FileCategory.SPREADSHEET]: z.uuid().optional(),
-  [FileCategory.PRESENTATION]: z.uuid().optional(),
+  [FileCategory.VIDEO]: z.uuid().optional(),
+  [FileCategory.AUDIO]: z.uuid().optional(),
+  [FileCategory.ARCHIVE]: z.uuid().optional(),
+  [FileCategory.CODE]: z.uuid().optional(),
+  [FileCategory.DATA]: z.uuid().optional(),
   [FileCategory.OTHER]: z.uuid().optional(),
 }).partial();
 

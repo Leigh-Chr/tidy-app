@@ -998,6 +998,204 @@ export async function getCacheStats(): Promise<CacheStats> {
 }
 
 // =============================================================================
+// History Types (Story 9.1)
+// =============================================================================
+
+/** Operation type */
+export type OperationType = "rename" | "move";
+
+/** Record of a single file operation in history */
+export interface FileHistoryRecord {
+  /** Original file path before operation */
+  originalPath: string;
+  /** New file path after operation (if successful) */
+  newPath?: string;
+  /** Whether this was a move operation (vs just rename) */
+  isMoveOperation: boolean;
+  /** Whether the operation was successful */
+  success: boolean;
+  /** Error message if operation failed */
+  error?: string;
+}
+
+/** Summary of an operation */
+export interface OperationSummary {
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  directoriesCreated?: number;
+}
+
+/** A single operation history entry */
+export interface OperationHistoryEntry {
+  /** Unique identifier for this entry */
+  id: string;
+  /** ISO timestamp when operation was performed */
+  timestamp: string;
+  /** Type of operation (rename or move) */
+  operationType: OperationType;
+  /** Total number of files in operation */
+  fileCount: number;
+  /** Summary of outcomes */
+  summary: OperationSummary;
+  /** Duration in milliseconds */
+  durationMs: number;
+  /** Individual file records */
+  files: FileHistoryRecord[];
+  /** Directories created during operation */
+  directoriesCreated?: string[];
+  /** Whether this operation has been undone */
+  undone: boolean;
+}
+
+/** The complete history store */
+export interface HistoryStore {
+  /** Schema version */
+  version: string;
+  /** All history entries (newest first) */
+  entries: OperationHistoryEntry[];
+  /** Last modification timestamp */
+  lastModified: string;
+}
+
+/** Result of an undo operation */
+export interface UndoResult {
+  /** Whether all files were restored successfully */
+  success: boolean;
+  /** ID of the entry that was undone */
+  entryId: string;
+  /** Number of files successfully restored */
+  filesRestored: number;
+  /** Number of files that failed to restore */
+  filesFailed: number;
+  /** Error messages for failed files */
+  errors: string[];
+}
+
+// =============================================================================
+// History Functions (Story 9.1)
+// =============================================================================
+
+/**
+ * Load operation history from storage
+ *
+ * @returns Promise resolving to history store with all entries
+ *
+ * @example
+ * ```typescript
+ * const history = await loadHistory();
+ * console.log(`${history.entries.length} operations in history`);
+ * ```
+ */
+export async function loadHistory(): Promise<HistoryStore> {
+  return invoke<HistoryStore>("load_history");
+}
+
+/**
+ * Record a batch rename operation to history
+ *
+ * @param result - The batch rename result to record
+ * @returns Promise resolving to the created history entry
+ *
+ * @example
+ * ```typescript
+ * const renameResult = await executeRename(proposals);
+ * if (renameResult.success) {
+ *   const entry = await recordOperation(renameResult);
+ *   console.log(`Recorded with ID: ${entry.id}`);
+ * }
+ * ```
+ */
+export async function recordOperation(
+  result: BatchRenameResult
+): Promise<OperationHistoryEntry> {
+  return invoke<OperationHistoryEntry>("record_operation", { result });
+}
+
+/**
+ * Get a specific history entry by ID
+ *
+ * @param entryId - ID of the history entry
+ * @returns Promise resolving to the history entry
+ *
+ * @example
+ * ```typescript
+ * const entry = await getHistoryEntry('abc-123');
+ * console.log(`Operation: ${entry.operationType}`);
+ * ```
+ */
+export async function getHistoryEntry(
+  entryId: string
+): Promise<OperationHistoryEntry> {
+  return invoke<OperationHistoryEntry>("get_history_entry", { entryId });
+}
+
+/**
+ * Get the number of history entries
+ *
+ * @returns Promise resolving to the count
+ *
+ * @example
+ * ```typescript
+ * const count = await getHistoryCount();
+ * console.log(`${count} operations in history`);
+ * ```
+ */
+export async function getHistoryCount(): Promise<number> {
+  return invoke<number>("get_history_count");
+}
+
+/**
+ * Undo an operation by restoring files to original locations
+ *
+ * @param entryId - ID of the history entry to undo
+ * @returns Promise resolving to undo result
+ *
+ * @example
+ * ```typescript
+ * const result = await undoOperation('abc-123');
+ * if (result.success) {
+ *   console.log(`Restored ${result.filesRestored} files`);
+ * }
+ * ```
+ */
+export async function undoOperation(entryId: string): Promise<UndoResult> {
+  return invoke<UndoResult>("undo_operation", { entryId });
+}
+
+/**
+ * Check if an operation can be undone
+ *
+ * @param entryId - ID of the history entry
+ * @returns Promise resolving to whether undo is possible
+ *
+ * @example
+ * ```typescript
+ * if (await canUndoOperation('abc-123')) {
+ *   await undoOperation('abc-123');
+ * }
+ * ```
+ */
+export async function canUndoOperation(entryId: string): Promise<boolean> {
+  return invoke<boolean>("can_undo_operation", { entryId });
+}
+
+/**
+ * Clear all history entries
+ *
+ * @returns Promise resolving when history is cleared
+ *
+ * @example
+ * ```typescript
+ * await clearHistory();
+ * console.log('History cleared');
+ * ```
+ */
+export async function clearHistory(): Promise<void> {
+  return invoke<void>("clear_history");
+}
+
+// =============================================================================
 // Analysis Progress Listener
 // =============================================================================
 

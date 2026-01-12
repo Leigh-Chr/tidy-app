@@ -61,9 +61,9 @@ describe('fileInfoSchema', () => {
       const categories = [
         FileCategory.IMAGE,
         FileCategory.DOCUMENT,
-        FileCategory.PDF,
-        FileCategory.SPREADSHEET,
-        FileCategory.PRESENTATION,
+        FileCategory.DOCUMENT,
+        FileCategory.DOCUMENT,
+        FileCategory.DOCUMENT,
         FileCategory.OTHER,
       ];
 

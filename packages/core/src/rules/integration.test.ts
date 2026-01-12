@@ -83,7 +83,7 @@ function createPDFMetadata(): UnifiedMetadata {
       modifiedAt: new Date('2026-01-10T11:00:00Z'),
       relativePath: 'docs/report.pdf',
       mimeType: 'application/pdf',
-      category: FileCategory.PDF,
+      category: FileCategory.DOCUMENT,
       metadataSupported: true,
       metadataCapability: MetadataCapability.FULL,
     },
@@ -261,7 +261,7 @@ describe('Rule evaluation against real metadata', () => {
       name: 'Jane Smith Documents',
       conditions: [
         { field: 'pdf.author', operator: 'equals', value: 'Jane Smith', caseSensitive: false },
-        { field: 'file.category', operator: 'equals', value: 'pdf', caseSensitive: false },
+        { field: 'file.category', operator: 'equals', value: 'document', caseSensitive: false },
       ],
       matchMode: 'all',
       templateId: '550e8400-e29b-41d4-a716-446655440001',

@@ -52,6 +52,15 @@ vi.mock("@tauri-apps/api/event", () => ({
   emit: vi.fn(),
 }));
 
+// Mock Tauri window API for window state checks
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: vi.fn(() => ({
+    isMaximized: vi.fn(() => Promise.resolve(false)),
+    onResized: vi.fn(() => Promise.resolve(() => {})),
+    toggleMaximize: vi.fn(() => Promise.resolve()),
+  })),
+}));
+
 // Mock tauri-controls for tests (it imports CSS which doesn't work in Vitest)
 vi.mock("tauri-controls", async () => {
   const React = await import("react");

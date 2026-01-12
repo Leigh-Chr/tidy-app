@@ -102,7 +102,7 @@ export function filterFiles(
  * const images = filterByCategory(files, FileCategory.IMAGE);
  *
  * // Multiple categories (OR logic)
- * const docs = filterByCategory(files, [FileCategory.PDF, FileCategory.DOCUMENT]);
+ * const docs = filterByCategory(files, [FileCategory.DOCUMENT, FileCategory.DOCUMENT]);
  * ```
  */
 export function filterByCategory(
@@ -144,20 +144,14 @@ export function filterImages(files: FileInfo[]): FileInfo[] {
 }
 
 /**
- * Convenience function to filter all document types.
- * Includes DOCUMENT (doc, docx, txt, md, rtf, odt), PDF, SPREADSHEET (xls, xlsx, csv, ods),
- * and PRESENTATION (ppt, pptx, odp) categories.
+ * Convenience function to filter document files.
+ * Includes all files with DOCUMENT category (doc, docx, txt, md, rtf, odt, pdf, xls, xlsx, csv, ppt, pptx, etc.).
  *
  * @param files - Array of FileInfo to filter
  * @returns New array containing only document files
  */
 export function filterDocuments(files: FileInfo[]): FileInfo[] {
-  return filterByCategory(files, [
-    FileCategory.DOCUMENT,
-    FileCategory.PDF,
-    FileCategory.SPREADSHEET,
-    FileCategory.PRESENTATION,
-  ]);
+  return filterByCategory(files, FileCategory.DOCUMENT);
 }
 
 /**

@@ -331,7 +331,7 @@ describe('Integration: Multiple rules with priorities', () => {
       name: 'report',
       extension: 'pdf',
       fullName: 'report.pdf',
-      category: FileCategory.PDF,
+      category: FileCategory.DOCUMENT,
     });
     const otherFile = createFileInfo({
       path: '/files/random.txt',
@@ -663,7 +663,7 @@ describe('Integration: End-to-end flow', () => {
         name: 'report',
         extension: 'pdf',
         fullName: 'report.pdf',
-        category: FileCategory.PDF,
+        category: FileCategory.DOCUMENT,
       }),
       createFileInfo({
         path: '/batch/backup.zip',

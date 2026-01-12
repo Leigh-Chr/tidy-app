@@ -270,6 +270,31 @@ pub struct BatchRenameResult {
 // Template Types
 // =============================================================================
 
+/// Case normalization style for filenames
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum CaseStyle {
+    /// No transformation - keep original casing
+    #[default]
+    None,
+    /// all lowercase
+    Lowercase,
+    /// ALL UPPERCASE
+    Uppercase,
+    /// First letter uppercase
+    Capitalize,
+    /// Each Word Capitalized
+    TitleCase,
+    /// words-separated-by-hyphens (RECOMMENDED)
+    KebabCase,
+    /// words_separated_by_underscores
+    SnakeCase,
+    /// wordsJoinedWithCamelCase
+    CamelCase,
+    /// WordsJoinedWithPascalCase
+    PascalCase,
+}
+
 /// Options for generating a preview
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -292,6 +317,9 @@ pub struct GeneratePreviewOptions {
     /// Options for organize mode (required when reorganization_mode is 'organize')
     #[serde(default)]
     pub organize_options: Option<OrganizeOptions>,
+    /// Case style for filename normalization
+    #[serde(default)]
+    pub case_style: CaseStyle,
 }
 
 /// Options for executing renames
@@ -340,6 +368,314 @@ fn is_valid_filename(name: &str) -> bool {
     }
 
     true
+}
+
+/// Maximum filename length for most filesystems
+const MAX_FILENAME_LENGTH: usize = 255;
+
+/// Information about a sanitization change
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SanitizeChange {
+    #[serde(rename = "type")]
+    pub change_type: String,
+    pub original: String,
+    pub replacement: String,
+    pub message: String,
+}
+
+/// Result of sanitizing a filename
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SanitizeResult {
+    pub sanitized: String,
+    pub original: String,
+    pub changes: Vec<SanitizeChange>,
+    pub was_modified: bool,
+}
+
+/// Sanitize a filename to be valid across operating systems.
+/// Applies the following transformations:
+/// 1. Replace invalid characters with replacement char
+/// 2. Collapse consecutive replacement characters
+/// 3. Handle Windows reserved names
+/// 4. Fix trailing spaces and periods
+/// 5. Truncate if too long
+fn sanitize_filename(filename: &str, replacement: char) -> SanitizeResult {
+    let mut changes: Vec<SanitizeChange> = Vec::new();
+    let original = filename.to_string();
+
+    // Handle empty filename
+    if filename.is_empty() {
+        return SanitizeResult {
+            sanitized: filename.to_string(),
+            original,
+            changes,
+            was_modified: false,
+        };
+    }
+
+    let mut result: String = filename.to_string();
+
+    // Step 1: Replace invalid characters
+    let invalid_chars: Vec<char> = result.chars().filter(|c| INVALID_CHARS.contains(c)).collect();
+    if !invalid_chars.is_empty() {
+        let unique_chars: Vec<char> = {
+            let mut seen = std::collections::HashSet::new();
+            invalid_chars.into_iter().filter(|c| seen.insert(*c)).collect()
+        };
+        changes.push(SanitizeChange {
+            change_type: "char_replacement".to_string(),
+            original: unique_chars.iter().collect(),
+            replacement: replacement.to_string().repeat(unique_chars.len()),
+            message: format!(
+                "Replaced invalid characters: {}",
+                unique_chars.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ")
+            ),
+        });
+        result = result.chars().map(|c| if INVALID_CHARS.contains(&c) { replacement } else { c }).collect();
+    }
+
+    // Step 2: Collapse multiple consecutive replacement characters
+    let replacement_str = replacement.to_string();
+    let mut prev_result = String::new();
+    while prev_result != result {
+        prev_result = result.clone();
+        result = result.replace(&format!("{}{}", replacement, replacement), &replacement_str);
+    }
+
+    // Step 3: Handle Windows reserved names
+    let (name_part, ext_part) = split_filename(&result);
+    if RESERVED_NAMES.contains(&name_part.to_uppercase().as_str()) {
+        let new_name = format!("{}_file{}", name_part, ext_part);
+        changes.push(SanitizeChange {
+            change_type: "reserved_name".to_string(),
+            original: name_part.to_string(),
+            replacement: format!("{}_file", name_part),
+            message: format!("\"{}\" is a reserved name on Windows", name_part),
+        });
+        result = new_name;
+    }
+
+    // Step 4: Fix trailing spaces and periods
+    let (name_part, ext_part) = split_filename(&result);
+    let trimmed_name: String = name_part.trim_end_matches(|c| c == '.' || c == ' ').to_string();
+    if trimmed_name != name_part {
+        let removed: String = name_part[trimmed_name.len()..].to_string();
+        changes.push(SanitizeChange {
+            change_type: "trailing_fix".to_string(),
+            original: removed,
+            replacement: String::new(),
+            message: "Removed trailing spaces/periods (invalid on Windows)".to_string(),
+        });
+        result = format!("{}{}", trimmed_name, ext_part);
+    }
+
+    // Also fix trailing chars at end of whole filename (no extension case)
+    let trimmed_full: String = result.trim_end_matches(|c| c == '.' || c == ' ').to_string();
+    if trimmed_full != result && trimmed_name == name_part {
+        let removed: String = result[trimmed_full.len()..].to_string();
+        changes.push(SanitizeChange {
+            change_type: "trailing_fix".to_string(),
+            original: removed,
+            replacement: String::new(),
+            message: "Removed trailing spaces/periods (invalid on Windows)".to_string(),
+        });
+        result = trimmed_full;
+    }
+
+    // Step 5: Handle length truncation
+    if result.len() > MAX_FILENAME_LENGTH {
+        result = truncate_filename(&result, MAX_FILENAME_LENGTH, &mut changes);
+    }
+
+    let was_modified = result != filename;
+
+    SanitizeResult {
+        sanitized: result,
+        original,
+        changes,
+        was_modified,
+    }
+}
+
+/// Split a filename into name and extension parts
+fn split_filename(filename: &str) -> (String, String) {
+    if filename.is_empty() {
+        return (String::new(), String::new());
+    }
+
+    // Handle dotfiles like .gitignore
+    if filename.starts_with('.') && !filename[1..].contains('.') {
+        return (filename.to_string(), String::new());
+    }
+
+    match filename.rfind('.') {
+        Some(0) | None => (filename.to_string(), String::new()),
+        Some(pos) => (filename[..pos].to_string(), filename[pos..].to_string()),
+    }
+}
+
+// =============================================================================
+// Case Normalization
+// =============================================================================
+
+/// Default word separators
+const WORD_SEPARATORS: &[char] = &[' ', '_', '-', '.'];
+
+/// Split a string into words, handling various formats (spaces, underscores, hyphens, camelCase)
+fn split_into_words(input: &str) -> Vec<String> {
+    if input.is_empty() {
+        return Vec::new();
+    }
+
+    let mut words: Vec<String> = Vec::new();
+    let mut current_word = String::new();
+    let mut prev_was_lowercase = false;
+
+    for c in input.chars() {
+        // Check for word separators
+        if WORD_SEPARATORS.contains(&c) {
+            if !current_word.is_empty() {
+                words.push(current_word);
+                current_word = String::new();
+            }
+            prev_was_lowercase = false;
+            continue;
+        }
+
+        // Handle camelCase/PascalCase transitions
+        let is_uppercase = c.is_uppercase();
+        if is_uppercase && prev_was_lowercase && !current_word.is_empty() {
+            words.push(current_word);
+            current_word = String::new();
+        }
+
+        current_word.push(c);
+        prev_was_lowercase = c.is_lowercase();
+    }
+
+    if !current_word.is_empty() {
+        words.push(current_word);
+    }
+
+    words
+}
+
+/// Capitalize the first letter of a word
+fn capitalize_word(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().chain(chars.flat_map(char::to_lowercase)).collect(),
+    }
+}
+
+/// Apply case normalization to a filename (name part only, not extension)
+fn normalize_case(name: &str, style: &CaseStyle) -> String {
+    if matches!(style, CaseStyle::None) || name.is_empty() {
+        return name.to_string();
+    }
+
+    let words = split_into_words(name);
+
+    match style {
+        CaseStyle::None => name.to_string(),
+        CaseStyle::Lowercase => words.iter().map(|w| w.to_lowercase()).collect::<Vec<_>>().join(" "),
+        CaseStyle::Uppercase => words.iter().map(|w| w.to_uppercase()).collect::<Vec<_>>().join(" "),
+        CaseStyle::Capitalize => {
+            if let Some(first) = words.first() {
+                let rest: Vec<String> = words.iter().skip(1).map(|w| w.to_lowercase()).collect();
+                let mut result = capitalize_word(first);
+                if !rest.is_empty() {
+                    result.push(' ');
+                    result.push_str(&rest.join(" "));
+                }
+                result
+            } else {
+                String::new()
+            }
+        }
+        CaseStyle::TitleCase => words.iter().map(|w| capitalize_word(w)).collect::<Vec<_>>().join(" "),
+        CaseStyle::KebabCase => words.iter().map(|w| w.to_lowercase()).collect::<Vec<_>>().join("-"),
+        CaseStyle::SnakeCase => words.iter().map(|w| w.to_lowercase()).collect::<Vec<_>>().join("_"),
+        CaseStyle::CamelCase => {
+            words.iter().enumerate().map(|(i, w)| {
+                if i == 0 { w.to_lowercase() } else { capitalize_word(w) }
+            }).collect()
+        }
+        CaseStyle::PascalCase => words.iter().map(|w| capitalize_word(w)).collect(),
+    }
+}
+
+/// Normalize a filename, applying case style to name part and lowercasing extension
+fn normalize_filename(filename: &str, style: &CaseStyle) -> String {
+    if matches!(style, CaseStyle::None) || filename.is_empty() {
+        return filename.to_string();
+    }
+
+    // Handle hidden files (starting with .)
+    let is_hidden = filename.starts_with('.');
+    let working_name = if is_hidden { &filename[1..] } else { filename };
+
+    // Split name and extension
+    let (name, extension) = match working_name.rfind('.') {
+        Some(0) | None => (working_name, ""),
+        Some(pos) => (&working_name[..pos], &working_name[pos..]),
+    };
+
+    // Normalize the name part
+    let normalized_name = normalize_case(name, style);
+
+    // Extension is always lowercase
+    let normalized_ext = extension.to_lowercase();
+
+    // Reconstruct
+    let prefix = if is_hidden { "." } else { "" };
+    format!("{}{}{}", prefix, normalized_name, normalized_ext)
+}
+
+/// Truncate a filename while preserving the extension
+fn truncate_filename(filename: &str, max_length: usize, changes: &mut Vec<SanitizeChange>) -> String {
+    let (name_part, ext_part) = split_filename(filename);
+
+    // Reserve space for extension
+    let max_name_length = max_length.saturating_sub(ext_part.len());
+
+    // Handle edge case where extension alone is too long
+    if max_name_length < 1 {
+        let result: String = filename.chars().take(max_length).collect();
+        changes.push(SanitizeChange {
+            change_type: "truncation".to_string(),
+            original: filename.to_string(),
+            replacement: result.clone(),
+            message: format!("Truncated from {} to {} characters (extension too long)", filename.len(), max_length),
+        });
+        return result;
+    }
+
+    // Truncate with ellipsis
+    let ellipsis = "...";
+    let available_length = max_name_length.saturating_sub(ellipsis.len());
+
+    let truncated_name = if available_length > 0 {
+        let name_chars: Vec<char> = name_part.chars().collect();
+        let truncated: String = name_chars.into_iter().take(available_length).collect();
+        format!("{}{}", truncated, ellipsis)
+    } else {
+        name_part.chars().take(max_name_length).collect()
+    };
+
+    let result = format!("{}{}", truncated_name, ext_part);
+
+    changes.push(SanitizeChange {
+        change_type: "truncation".to_string(),
+        original: filename.to_string(),
+        replacement: result.clone(),
+        message: format!("Truncated from {} to {} characters", filename.len(), result.len()),
+    });
+
+    result
 }
 
 /// Apply a template pattern to generate a new filename
@@ -405,7 +741,10 @@ fn apply_template(file: &FileInfo, pattern: &str, date_format: &str) -> (String,
         }
     }
 
-    (result, sources)
+    // Sanitize the filename to ensure cross-platform compatibility
+    let sanitized = sanitize_filename(&result, '_');
+
+    (sanitized.sanitized, sources)
 }
 
 /// Format a date according to a pattern
@@ -512,10 +851,16 @@ pub async fn generate_preview(
     let mut proposals: Vec<RenameProposal> = Vec::new();
     let mut proposed_paths: HashMap<String, Vec<String>> = HashMap::new();
 
+    // Get case style from options
+    let case_style = &options.case_style;
+
     // First pass: generate proposals
     for file in &files {
         let id = Uuid::new_v4().to_string();
-        let (proposed_name, metadata_sources) = apply_template(file, &template_pattern, date_format);
+        let (raw_proposed_name, metadata_sources) = apply_template(file, &template_pattern, date_format);
+
+        // Apply case normalization
+        let proposed_name = normalize_filename(&raw_proposed_name, case_style);
 
         // Determine destination directory based on reorganization mode
         let (dest_dir, is_folder_move, destination_folder) = match reorg_mode {
@@ -1067,5 +1412,189 @@ mod tests {
         assert_eq!(result.summary.skipped, 1);
         assert!(dir.path().join("renamed1.jpg").exists());
         assert!(file2_path.exists()); // Second file should not be renamed
+    }
+
+    // =============================================================================
+    // Sanitization Tests
+    // =============================================================================
+
+    #[test]
+    fn test_sanitize_filename_no_change() {
+        let result = sanitize_filename("valid_filename.jpg", '_');
+        assert_eq!(result.sanitized, "valid_filename.jpg");
+        assert!(!result.was_modified);
+        assert!(result.changes.is_empty());
+    }
+
+    #[test]
+    fn test_sanitize_filename_replaces_invalid_chars() {
+        let result = sanitize_filename("photo:2024.jpg", '_');
+        assert_eq!(result.sanitized, "photo_2024.jpg");
+        assert!(result.was_modified);
+        assert_eq!(result.changes.len(), 1);
+        assert_eq!(result.changes[0].change_type, "char_replacement");
+    }
+
+    #[test]
+    fn test_sanitize_filename_collapses_multiple_replacements() {
+        let result = sanitize_filename("test::file.jpg", '_');
+        assert_eq!(result.sanitized, "test_file.jpg");
+        assert!(result.was_modified);
+    }
+
+    #[test]
+    fn test_sanitize_filename_handles_reserved_names() {
+        let result = sanitize_filename("CON.txt", '_');
+        assert_eq!(result.sanitized, "CON_file.txt");
+        assert!(result.was_modified);
+        assert!(result.changes.iter().any(|c| c.change_type == "reserved_name"));
+    }
+
+    #[test]
+    fn test_sanitize_filename_fixes_trailing_spaces() {
+        let result = sanitize_filename("test .jpg", '_');
+        assert_eq!(result.sanitized, "test.jpg");
+        assert!(result.was_modified);
+    }
+
+    #[test]
+    fn test_sanitize_filename_fixes_trailing_dots() {
+        let result = sanitize_filename("test..jpg", '_');
+        assert_eq!(result.sanitized, "test.jpg");
+        assert!(result.was_modified);
+    }
+
+    #[test]
+    fn test_split_filename() {
+        assert_eq!(split_filename("file.txt"), ("file".to_string(), ".txt".to_string()));
+        assert_eq!(split_filename("file.tar.gz"), ("file.tar".to_string(), ".gz".to_string()));
+        assert_eq!(split_filename(".gitignore"), (".gitignore".to_string(), String::new()));
+        assert_eq!(split_filename("noextension"), ("noextension".to_string(), String::new()));
+        assert_eq!(split_filename(""), (String::new(), String::new()));
+    }
+
+    #[test]
+    fn test_apply_template_sanitizes_output() {
+        // Create a file with invalid characters in the name
+        let file = create_test_file_info("photo:test", "jpg", "/home/user/photo:test.jpg");
+        let (result, _) = apply_template(&file, "{name}.{ext}", "YYYY-MM-DD");
+        // The sanitization should replace : with _
+        assert_eq!(result, "photo_test.jpg");
+    }
+
+    // =============================================================================
+    // Case Normalization Tests
+    // =============================================================================
+
+    #[test]
+    fn test_split_into_words_simple() {
+        let words = split_into_words("hello world");
+        assert_eq!(words, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn test_split_into_words_with_separators() {
+        let words = split_into_words("hello-world_test");
+        assert_eq!(words, vec!["hello", "world", "test"]);
+    }
+
+    #[test]
+    fn test_split_into_words_camel_case() {
+        let words = split_into_words("helloWorldTest");
+        assert_eq!(words, vec!["hello", "World", "Test"]);
+    }
+
+    #[test]
+    fn test_split_into_words_pascal_case() {
+        let words = split_into_words("HelloWorldTest");
+        assert_eq!(words, vec!["Hello", "World", "Test"]);
+    }
+
+    #[test]
+    fn test_capitalize_word() {
+        assert_eq!(capitalize_word("hello"), "Hello");
+        assert_eq!(capitalize_word("HELLO"), "Hello");
+        assert_eq!(capitalize_word(""), "");
+    }
+
+    #[test]
+    fn test_normalize_case_none() {
+        assert_eq!(normalize_case("Hello World", &CaseStyle::None), "Hello World");
+    }
+
+    #[test]
+    fn test_normalize_case_lowercase() {
+        assert_eq!(normalize_case("Hello World", &CaseStyle::Lowercase), "hello world");
+    }
+
+    #[test]
+    fn test_normalize_case_uppercase() {
+        assert_eq!(normalize_case("Hello World", &CaseStyle::Uppercase), "HELLO WORLD");
+    }
+
+    #[test]
+    fn test_normalize_case_capitalize() {
+        assert_eq!(normalize_case("hello world", &CaseStyle::Capitalize), "Hello world");
+        assert_eq!(normalize_case("HELLO WORLD", &CaseStyle::Capitalize), "Hello world");
+    }
+
+    #[test]
+    fn test_normalize_case_title_case() {
+        assert_eq!(normalize_case("hello world", &CaseStyle::TitleCase), "Hello World");
+    }
+
+    #[test]
+    fn test_normalize_case_kebab_case() {
+        assert_eq!(normalize_case("Hello World", &CaseStyle::KebabCase), "hello-world");
+        assert_eq!(normalize_case("helloWorld", &CaseStyle::KebabCase), "hello-world");
+    }
+
+    #[test]
+    fn test_normalize_case_snake_case() {
+        assert_eq!(normalize_case("Hello World", &CaseStyle::SnakeCase), "hello_world");
+        assert_eq!(normalize_case("helloWorld", &CaseStyle::SnakeCase), "hello_world");
+    }
+
+    #[test]
+    fn test_normalize_case_camel_case() {
+        assert_eq!(normalize_case("hello world", &CaseStyle::CamelCase), "helloWorld");
+        assert_eq!(normalize_case("Hello World", &CaseStyle::CamelCase), "helloWorld");
+    }
+
+    #[test]
+    fn test_normalize_case_pascal_case() {
+        assert_eq!(normalize_case("hello world", &CaseStyle::PascalCase), "HelloWorld");
+    }
+
+    #[test]
+    fn test_normalize_filename_preserves_extension() {
+        assert_eq!(normalize_filename("Hello World.JPG", &CaseStyle::KebabCase), "hello-world.jpg");
+        assert_eq!(normalize_filename("My Document.PDF", &CaseStyle::SnakeCase), "my_document.pdf");
+    }
+
+    #[test]
+    fn test_normalize_filename_handles_hidden_files() {
+        assert_eq!(normalize_filename(".Hidden File.txt", &CaseStyle::KebabCase), ".hidden-file.txt");
+    }
+
+    #[test]
+    fn test_normalize_filename_none_style() {
+        assert_eq!(normalize_filename("Hello World.JPG", &CaseStyle::None), "Hello World.JPG");
+    }
+
+    #[tokio::test]
+    async fn test_generate_preview_with_case_normalization() {
+        let files = vec![create_test_file_info("My Photo", "JPG", "/tmp/My Photo.JPG")];
+
+        let options = GeneratePreviewOptions {
+            case_style: CaseStyle::KebabCase,
+            ..Default::default()
+        };
+
+        let result = generate_preview(files, "{name}.{ext}".to_string(), Some(options))
+            .await
+            .unwrap();
+
+        assert_eq!(result.proposals[0].proposed_name, "my-photo.jpg");
     }
 }

@@ -115,7 +115,7 @@ function createFullUnifiedMetadata(): UnifiedMetadata {
  */
 function createPdfUnifiedMetadata(): UnifiedMetadata {
   return {
-    file: { ...createTestFileInfo(), extension: 'pdf', category: FileCategory.PDF },
+    file: { ...createTestFileInfo(), extension: 'pdf', category: FileCategory.DOCUMENT },
     image: null,
     pdf: createTestPdfMetadata(),
     office: null,

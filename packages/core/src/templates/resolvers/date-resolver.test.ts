@@ -184,7 +184,7 @@ describe('resolveDatePlaceholder', () => {
       const context: PlaceholderContext = {
         file: createMockFile({
           extension: 'pdf',
-          category: FileCategory.PDF,
+          category: FileCategory.DOCUMENT,
           modifiedAt: new Date('2025-06-20T14:45:00'),
         }),
         imageMetadata: null,

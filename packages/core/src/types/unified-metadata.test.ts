@@ -71,7 +71,7 @@ describe('unifiedMetadataSchema', () => {
         name: 'document',
         extension: 'pdf',
         fullName: 'document.pdf',
-        category: FileCategory.PDF,
+        category: FileCategory.DOCUMENT,
       }),
       image: null,
       pdf: {

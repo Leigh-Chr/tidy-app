@@ -71,17 +71,17 @@ describe('calculateStatistics', () => {
       const files = [
         createMockFile({ category: FileCategory.IMAGE }),
         createMockFile({ category: FileCategory.IMAGE }),
-        createMockFile({ category: FileCategory.PDF }),
         createMockFile({ category: FileCategory.DOCUMENT }),
+        createMockFile({ category: FileCategory.VIDEO }),
       ];
 
       const stats = calculateStatistics(files);
 
       expect(stats.byCategory[FileCategory.IMAGE]).toBe(2);
-      expect(stats.byCategory[FileCategory.PDF]).toBe(1);
       expect(stats.byCategory[FileCategory.DOCUMENT]).toBe(1);
-      expect(stats.byCategory[FileCategory.SPREADSHEET]).toBe(0);
-      expect(stats.byCategory[FileCategory.PRESENTATION]).toBe(0);
+      expect(stats.byCategory[FileCategory.VIDEO]).toBe(1);
+      expect(stats.byCategory[FileCategory.AUDIO]).toBe(0);
+      expect(stats.byCategory[FileCategory.ARCHIVE]).toBe(0);
       expect(stats.byCategory[FileCategory.OTHER]).toBe(0);
     });
 
@@ -93,9 +93,9 @@ describe('calculateStatistics', () => {
       // All categories should exist, even if 0
       expect(stats.byCategory).toHaveProperty(FileCategory.IMAGE);
       expect(stats.byCategory).toHaveProperty(FileCategory.DOCUMENT);
-      expect(stats.byCategory).toHaveProperty(FileCategory.PDF);
-      expect(stats.byCategory).toHaveProperty(FileCategory.SPREADSHEET);
-      expect(stats.byCategory).toHaveProperty(FileCategory.PRESENTATION);
+      expect(stats.byCategory).toHaveProperty(FileCategory.VIDEO);
+      expect(stats.byCategory).toHaveProperty(FileCategory.AUDIO);
+      expect(stats.byCategory).toHaveProperty(FileCategory.ARCHIVE);
       expect(stats.byCategory).toHaveProperty(FileCategory.OTHER);
     });
 
@@ -160,7 +160,7 @@ describe('calculateStatistics', () => {
       expect(stats.totalFiles).toBe(2);
       expect(stats.totalSize).toBe(8000);
       expect(stats.byCategory[FileCategory.IMAGE]).toBe(2);
-      expect(stats.byCategory[FileCategory.PDF]).toBe(0);
+      expect(stats.byCategory[FileCategory.DOCUMENT]).toBe(0);
     });
 
     it('reflects filtered subset accurately', () => {
@@ -192,9 +192,9 @@ describe('calculateStatistics', () => {
 
       expect(stats.byCategory[FileCategory.IMAGE]).toBe(0);
       expect(stats.byCategory[FileCategory.DOCUMENT]).toBe(0);
-      expect(stats.byCategory[FileCategory.PDF]).toBe(0);
-      expect(stats.byCategory[FileCategory.SPREADSHEET]).toBe(0);
-      expect(stats.byCategory[FileCategory.PRESENTATION]).toBe(0);
+      expect(stats.byCategory[FileCategory.DOCUMENT]).toBe(0);
+      expect(stats.byCategory[FileCategory.DOCUMENT]).toBe(0);
+      expect(stats.byCategory[FileCategory.DOCUMENT]).toBe(0);
       expect(stats.byCategory[FileCategory.OTHER]).toBe(0);
     });
 
@@ -306,12 +306,12 @@ describe('formatStatistics', () => {
       metadataSupported: true,
     }),
     createMockFile({
-      category: FileCategory.PDF,
+      category: FileCategory.DOCUMENT,
       size: 10000,
       metadataSupported: true,
     }),
     createMockFile({
-      category: FileCategory.DOCUMENT,
+      category: FileCategory.VIDEO,
       size: 2000,
       metadataSupported: false,
     }),
@@ -346,8 +346,8 @@ describe('formatStatistics', () => {
     const formatted = formatStatistics(stats);
 
     const categories = formatted.categoryBreakdown.map((b) => b.category);
-    expect(categories).not.toContain(FileCategory.SPREADSHEET);
-    expect(categories).not.toContain(FileCategory.PRESENTATION);
+    expect(categories).not.toContain(FileCategory.AUDIO);
+    expect(categories).not.toContain(FileCategory.ARCHIVE);
     expect(categories).not.toContain(FileCategory.OTHER);
   });
 
@@ -355,23 +355,28 @@ describe('formatStatistics', () => {
     const stats = calculateStatistics(mockFiles);
     const formatted = formatStatistics(stats);
 
-    // IMAGE: 2/4 = 50%, PDF: 1/4 = 25%, DOCUMENT: 1/4 = 25%
+    // IMAGE: 2/4 = 50%, DOCUMENT: 1/4 = 25%, VIDEO: 1/4 = 25%
     const imageEntry = formatted.categoryBreakdown.find(
       (b) => b.category === FileCategory.IMAGE
     );
     expect(imageEntry?.percentage).toBe(50);
 
-    const pdfEntry = formatted.categoryBreakdown.find(
-      (b) => b.category === FileCategory.PDF
+    const documentEntry = formatted.categoryBreakdown.find(
+      (b) => b.category === FileCategory.DOCUMENT
     );
-    expect(pdfEntry?.percentage).toBe(25);
+    expect(documentEntry?.percentage).toBe(25);
+
+    const videoEntry = formatted.categoryBreakdown.find(
+      (b) => b.category === FileCategory.VIDEO
+    );
+    expect(videoEntry?.percentage).toBe(25);
   });
 
   it('rounds percentages to whole numbers', () => {
     const files = [
       createMockFile({ category: FileCategory.IMAGE }),
       createMockFile({ category: FileCategory.IMAGE }),
-      createMockFile({ category: FileCategory.PDF }),
+      createMockFile({ category: FileCategory.DOCUMENT }),
     ];
     const stats = calculateStatistics(files);
     const formatted = formatStatistics(stats);

@@ -17,9 +17,11 @@ describe('scanStatisticsSchema', () => {
     byCategory: {
       [FileCategory.IMAGE]: 5,
       [FileCategory.DOCUMENT]: 2,
-      [FileCategory.PDF]: 1,
-      [FileCategory.SPREADSHEET]: 1,
-      [FileCategory.PRESENTATION]: 0,
+      [FileCategory.VIDEO]: 1,
+      [FileCategory.AUDIO]: 1,
+      [FileCategory.ARCHIVE]: 0,
+      [FileCategory.CODE]: 0,
+      [FileCategory.DATA]: 0,
       [FileCategory.OTHER]: 1,
     },
     metadataSupportedCount: 6,
@@ -40,9 +42,11 @@ describe('scanStatisticsSchema', () => {
       byCategory: {
         [FileCategory.IMAGE]: 0,
         [FileCategory.DOCUMENT]: 0,
-        [FileCategory.PDF]: 0,
-        [FileCategory.SPREADSHEET]: 0,
-        [FileCategory.PRESENTATION]: 0,
+        [FileCategory.VIDEO]: 0,
+        [FileCategory.AUDIO]: 0,
+        [FileCategory.ARCHIVE]: 0,
+        [FileCategory.CODE]: 0,
+        [FileCategory.DATA]: 0,
         [FileCategory.OTHER]: 0,
       },
       metadataSupportedCount: 0,
@@ -72,9 +76,11 @@ describe('scanResultSchema', () => {
       byCategory: {
         [FileCategory.IMAGE]: 0,
         [FileCategory.DOCUMENT]: 0,
-        [FileCategory.PDF]: 0,
-        [FileCategory.SPREADSHEET]: 0,
-        [FileCategory.PRESENTATION]: 0,
+        [FileCategory.VIDEO]: 0,
+        [FileCategory.AUDIO]: 0,
+        [FileCategory.ARCHIVE]: 0,
+        [FileCategory.CODE]: 0,
+        [FileCategory.DATA]: 0,
         [FileCategory.OTHER]: 0,
       },
       metadataSupportedCount: 0,
@@ -158,18 +164,18 @@ describe('calculateStatistics', () => {
     const files = [
       createFile({ category: FileCategory.IMAGE }),
       createFile({ category: FileCategory.IMAGE }),
-      createFile({ category: FileCategory.PDF }),
       createFile({ category: FileCategory.DOCUMENT }),
+      createFile({ category: FileCategory.VIDEO }),
       createFile({ category: FileCategory.OTHER }),
     ];
     const result = calculateStatistics(files);
 
     expect(result.byCategory[FileCategory.IMAGE]).toBe(2);
-    expect(result.byCategory[FileCategory.PDF]).toBe(1);
     expect(result.byCategory[FileCategory.DOCUMENT]).toBe(1);
+    expect(result.byCategory[FileCategory.VIDEO]).toBe(1);
     expect(result.byCategory[FileCategory.OTHER]).toBe(1);
-    expect(result.byCategory[FileCategory.SPREADSHEET]).toBe(0);
-    expect(result.byCategory[FileCategory.PRESENTATION]).toBe(0);
+    expect(result.byCategory[FileCategory.AUDIO]).toBe(0);
+    expect(result.byCategory[FileCategory.ARCHIVE]).toBe(0);
   });
 
   it('counts metadata supported files correctly', () => {
@@ -192,12 +198,12 @@ describe('calculateStatistics', () => {
         size: 5000,
       }),
       createFile({
-        category: FileCategory.PDF,
+        category: FileCategory.DOCUMENT,
         metadataSupported: true,
         size: 10000,
       }),
       createFile({
-        category: FileCategory.DOCUMENT,
+        category: FileCategory.VIDEO,
         metadataSupported: false,
         size: 2000,
       }),
@@ -208,7 +214,7 @@ describe('calculateStatistics', () => {
     expect(result.totalSize).toBe(17000);
     expect(result.metadataSupportedCount).toBe(2);
     expect(result.byCategory[FileCategory.IMAGE]).toBe(1);
-    expect(result.byCategory[FileCategory.PDF]).toBe(1);
     expect(result.byCategory[FileCategory.DOCUMENT]).toBe(1);
+    expect(result.byCategory[FileCategory.VIDEO]).toBe(1);
   });
 });

@@ -216,7 +216,7 @@ describe('previewFile', () => {
         path: '/docs/report.pdf',
         name: 'report',
         extension: 'pdf',
-        category: FileCategory.PDF,
+        category: FileCategory.DOCUMENT,
       });
       const metadata = { pdfMetadata: createMockPdfMetadata() };
       const result = previewFile(file, '{author}_{original}', metadata, { caseNormalization: 'none' });
@@ -656,7 +656,7 @@ describe('previewFiles', () => {
             path: '/files/report.pdf',
             name: 'report',
             extension: 'pdf',
-            category: FileCategory.PDF,
+            category: FileCategory.DOCUMENT,
           }),
           pdfMetadata: createMockPdfMetadata(),
         },

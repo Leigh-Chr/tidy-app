@@ -704,6 +704,8 @@ describe("useAppStore", () => {
         files: mockFiles,
         templatePattern: "{date}_{name}.{ext}",
         options: {
+          reorganizationMode: "rename-only",
+          organizeOptions: undefined,
           folderPattern: undefined,
           baseDirectory: undefined,
         },

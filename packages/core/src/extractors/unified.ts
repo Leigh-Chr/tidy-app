@@ -56,37 +56,29 @@ export async function getFileMetadata(
         });
       }
 
-      case FileCategory.PDF: {
-        const result = await extractPdf(file.path);
-        if (result.ok) {
+      case FileCategory.DOCUMENT: {
+        // Try PDF extraction first, fall back to Office extraction
+        const pdfResult = await extractPdf(file.path);
+        if (pdfResult.ok) {
           return ok({
             ...base,
-            pdf: result.data,
+            pdf: pdfResult.data,
+            extractionStatus: 'success',
+          });
+        }
+        // If PDF extraction fails, try Office extraction
+        const officeResult = await extractOffice(file.path);
+        if (officeResult.ok) {
+          return ok({
+            ...base,
+            office: officeResult.data,
             extractionStatus: 'success',
           });
         }
         return ok({
           ...base,
           extractionStatus: 'failed',
-          extractionError: result.error.message,
-        });
-      }
-
-      case FileCategory.DOCUMENT:
-      case FileCategory.SPREADSHEET:
-      case FileCategory.PRESENTATION: {
-        const result = await extractOffice(file.path);
-        if (result.ok) {
-          return ok({
-            ...base,
-            office: result.data,
-            extractionStatus: 'success',
-          });
-        }
-        return ok({
-          ...base,
-          extractionStatus: 'failed',
-          extractionError: result.error.message,
+          extractionError: pdfResult.error.message,
         });
       }
 

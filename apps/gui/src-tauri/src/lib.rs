@@ -4,9 +4,11 @@
 mod commands;
 
 use commands::{
-    analyze_files_with_llm, check_ollama_health, check_openai_health, clear_analysis_cache,
-    execute_rename, export_results, generate_preview, get_cache_stats, get_config, get_version,
-    list_ollama_models, list_openai_models, reset_config, save_config, scan_folder,
+    analyze_files_with_llm, can_undo_operation, check_ollama_health, check_openai_health,
+    clear_analysis_cache, clear_history, execute_rename, export_results, generate_preview,
+    get_cache_stats, get_config, get_history_count, get_history_entry, get_version, load_history,
+    list_ollama_models, list_openai_models, record_operation, reset_config, save_config,
+    scan_folder, undo_operation,
 };
 use tauri::Manager;
 
@@ -52,7 +54,15 @@ pub fn run() {
             list_openai_models,
             analyze_files_with_llm,
             clear_analysis_cache,
-            get_cache_stats
+            get_cache_stats,
+            // History commands (Story 9.1)
+            load_history,
+            record_operation,
+            get_history_entry,
+            get_history_count,
+            undo_operation,
+            can_undo_operation,
+            clear_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
