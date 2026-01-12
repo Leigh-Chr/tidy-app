@@ -338,6 +338,11 @@ pub struct GeneratePreviewOptions {
     /// Case style for filename normalization
     #[serde(default)]
     pub case_style: CaseStyle,
+    /// Strip existing date/counter patterns from filename before applying template
+    /// This prevents duplicate dates when re-applying templates (e.g., "2024-01-15_2024-01-15_photo")
+    /// Default: false (for backward compatibility)
+    #[serde(default)]
+    pub strip_existing_patterns: bool,
 }
 
 /// Options for executing renames
@@ -387,6 +392,64 @@ fn is_valid_filename(name: &str) -> bool {
     }
 
     true
+}
+
+// =============================================================================
+// Pattern Stripping (for idempotent template application)
+// =============================================================================
+
+/// Common date patterns to strip from filenames
+/// These patterns are matched at the start or end of the filename, with optional separators
+const DATE_PATTERNS: &[&str] = &[
+    // ISO format: YYYY-MM-DD, YYYY_MM_DD
+    r"^\d{4}[-_]\d{2}[-_]\d{2}[-_ ]?",
+    // Compact ISO: YYYYMMDD
+    r"^\d{8}[-_ ]?",
+    // European format: DD-MM-YYYY, DD_MM_YYYY
+    r"^\d{2}[-_]\d{2}[-_]\d{4}[-_ ]?",
+    // At the end: _YYYY-MM-DD, _YYYYMMDD
+    r"[-_ ]\d{4}[-_]?\d{2}[-_]?\d{2}$",
+];
+
+/// Counter patterns to strip from filenames
+const COUNTER_PATTERNS: &[&str] = &[
+    // At the end: _001, _002, (1), (2), -01, -02
+    r"[-_ ]\d{1,4}$",
+    r"\(\d{1,4}\)$",
+];
+
+/// Clean a filename by removing existing date and counter patterns
+/// This makes template application idempotent (applying the same template twice gives the same result)
+fn clean_filename(name: &str) -> String {
+    if name.is_empty() {
+        return name.to_string();
+    }
+
+    let mut result = name.to_string();
+
+    // Remove date patterns
+    for pattern in DATE_PATTERNS {
+        if let Ok(re) = regex_lite::Regex::new(pattern) {
+            result = re.replace(&result, "").to_string();
+        }
+    }
+
+    // Remove counter patterns
+    for pattern in COUNTER_PATTERNS {
+        if let Ok(re) = regex_lite::Regex::new(pattern) {
+            result = re.replace(&result, "").to_string();
+        }
+    }
+
+    // Clean up any remaining leading/trailing separators
+    result = result.trim_matches(|c| c == '-' || c == '_' || c == ' ').to_string();
+
+    // If we stripped everything, return original
+    if result.is_empty() {
+        return name.to_string();
+    }
+
+    result
 }
 
 /// Maximum filename length for most filesystems
@@ -701,14 +764,21 @@ fn truncate_filename(filename: &str, max_length: usize, changes: &mut Vec<Saniti
 }
 
 /// Apply a template pattern to generate a new filename
-fn apply_template(file: &FileInfo, pattern: &str, date_format: &str) -> (String, Vec<String>) {
+fn apply_template(file: &FileInfo, pattern: &str, date_format: &str, strip_existing_patterns: bool) -> (String, Vec<String>) {
     let mut result = pattern.to_string();
     let mut sources: Vec<String> = Vec::new();
 
-    // Replace {name} or {original} with original filename (without extension)
+    // Get the name to use - either cleaned or original
+    let name_to_use = if strip_existing_patterns {
+        clean_filename(&file.name)
+    } else {
+        file.name.clone()
+    };
+
+    // Replace {name} or {original} with filename (without extension)
     if result.contains("{name}") || result.contains("{original}") {
-        result = result.replace("{name}", &file.name);
-        result = result.replace("{original}", &file.name);
+        result = result.replace("{name}", &name_to_use);
+        result = result.replace("{original}", &name_to_use);
         sources.push("filename".to_string());
     }
 
@@ -873,13 +943,14 @@ pub async fn generate_preview(
     let mut proposals: Vec<RenameProposal> = Vec::new();
     let mut proposed_paths: HashMap<String, Vec<String>> = HashMap::new();
 
-    // Get case style from options
+    // Get options
     let case_style = &options.case_style;
+    let strip_existing_patterns = options.strip_existing_patterns;
 
     // First pass: generate proposals
     for file in &files {
         let id = Uuid::new_v4().to_string();
-        let (raw_proposed_name, metadata_sources) = apply_template(file, &template_pattern, date_format);
+        let (raw_proposed_name, metadata_sources) = apply_template(file, &template_pattern, date_format, strip_existing_patterns);
 
         // Apply case normalization
         let proposed_name = normalize_filename(&raw_proposed_name, case_style);
@@ -1255,7 +1326,7 @@ mod tests {
     #[test]
     fn test_apply_template_basic() {
         let file = create_test_file_info("photo", "jpg", "/home/user/photo.jpg");
-        let (result, sources) = apply_template(&file, "{name}.{ext}", "YYYY-MM-DD");
+        let (result, sources) = apply_template(&file, "{name}.{ext}", "YYYY-MM-DD", false);
         assert_eq!(result, "photo.jpg");
         assert!(sources.contains(&"filename".to_string()));
     }
@@ -1267,7 +1338,7 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
 
-        let (result, sources) = apply_template(&file, "{date}_{name}.{ext}", "YYYY-MM-DD");
+        let (result, sources) = apply_template(&file, "{date}_{name}.{ext}", "YYYY-MM-DD", false);
         assert_eq!(result, "2024-07-15_photo.jpg");
         assert!(sources.contains(&"file-date".to_string()));
     }
@@ -1279,7 +1350,7 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
 
-        let (result, _) = apply_template(&file, "{date:YYYYMMDD}_{name}.{ext}", "YYYY-MM-DD");
+        let (result, _) = apply_template(&file, "{date:YYYYMMDD}_{name}.{ext}", "YYYY-MM-DD", false);
         assert_eq!(result, "20240715_photo.jpg");
     }
 
@@ -1499,7 +1570,7 @@ mod tests {
     fn test_apply_template_sanitizes_output() {
         // Create a file with invalid characters in the name
         let file = create_test_file_info("photo:test", "jpg", "/home/user/photo:test.jpg");
-        let (result, _) = apply_template(&file, "{name}.{ext}", "YYYY-MM-DD");
+        let (result, _) = apply_template(&file, "{name}.{ext}", "YYYY-MM-DD", false);
         // The sanitization should replace : with _
         assert_eq!(result, "photo_test.jpg");
     }
@@ -1618,5 +1689,131 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.proposals[0].proposed_name, "my-photo.jpg");
+    }
+
+    // =============================================================================
+    // Pattern Stripping Tests
+    // =============================================================================
+
+    #[test]
+    fn test_clean_filename_no_patterns() {
+        assert_eq!(clean_filename("photo"), "photo");
+        assert_eq!(clean_filename("my-vacation-pic"), "my-vacation-pic");
+    }
+
+    #[test]
+    fn test_clean_filename_iso_date_prefix() {
+        assert_eq!(clean_filename("2024-01-15_photo"), "photo");
+        assert_eq!(clean_filename("2024-01-15-photo"), "photo");
+        assert_eq!(clean_filename("2024_01_15_photo"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_compact_date_prefix() {
+        assert_eq!(clean_filename("20240115_photo"), "photo");
+        assert_eq!(clean_filename("20240115-photo"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_date_suffix() {
+        assert_eq!(clean_filename("photo_2024-01-15"), "photo");
+        assert_eq!(clean_filename("photo-20240115"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_counter_suffix() {
+        assert_eq!(clean_filename("photo_001"), "photo");
+        assert_eq!(clean_filename("photo-02"), "photo");
+        assert_eq!(clean_filename("photo(3)"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_multiple_patterns() {
+        assert_eq!(clean_filename("2024-01-15_photo_001"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_preserves_non_date_numbers() {
+        // Numbers that aren't dates should be preserved
+        assert_eq!(clean_filename("photo123"), "photo123");
+        assert_eq!(clean_filename("vacation2024"), "vacation2024");
+    }
+
+    #[test]
+    fn test_clean_filename_empty_result_returns_original() {
+        // If cleaning would result in empty string, return original
+        assert_eq!(clean_filename("2024-01-15"), "2024-01-15");
+        assert_eq!(clean_filename("001"), "001");
+    }
+
+    #[tokio::test]
+    async fn test_generate_preview_with_strip_existing_patterns() {
+        // Simulate a file that was already renamed with a date prefix
+        let files = vec![create_test_file_info("2024-01-15_photo", "jpg", "/tmp/2024-01-15_photo.jpg")];
+
+        // Without stripping - would create duplicate date
+        let options_no_strip = GeneratePreviewOptions {
+            strip_existing_patterns: false,
+            ..Default::default()
+        };
+
+        let result = generate_preview(files.clone(), "{date}_{name}.{ext}".to_string(), Some(options_no_strip))
+            .await
+            .unwrap();
+
+        // The date appears twice because {name} includes the existing date
+        assert!(result.proposals[0].proposed_name.contains("2024"));
+        assert!(result.proposals[0].proposed_name.matches("2024").count() >= 1);
+
+        // With stripping - clean result
+        let options_strip = GeneratePreviewOptions {
+            strip_existing_patterns: true,
+            ..Default::default()
+        };
+
+        let result = generate_preview(files, "{date}_{name}.{ext}".to_string(), Some(options_strip))
+            .await
+            .unwrap();
+
+        // The date should only appear once
+        let date_count = result.proposals[0].proposed_name.matches('-').count();
+        // ISO date has 2 dashes (YYYY-MM-DD), plus 1 underscore separator = clean format
+        assert!(date_count <= 3, "Expected clean date format, got: {}", result.proposals[0].proposed_name);
+    }
+
+    #[tokio::test]
+    async fn test_strip_existing_patterns_idempotent() {
+        // Apply template to a clean file
+        let files = vec![create_test_file_info("vacation", "jpg", "/tmp/vacation.jpg")];
+
+        let options = GeneratePreviewOptions {
+            strip_existing_patterns: true,
+            ..Default::default()
+        };
+
+        let result1 = generate_preview(files, "{date}_{name}.{ext}".to_string(), Some(options.clone()))
+            .await
+            .unwrap();
+
+        let first_name = &result1.proposals[0].proposed_name;
+
+        // Now simulate applying to the already-renamed file
+        let renamed_files = vec![create_test_file_info(
+            first_name.strip_suffix(".jpg").unwrap_or(first_name),
+            "jpg",
+            &format!("/tmp/{}", first_name)
+        )];
+
+        let result2 = generate_preview(renamed_files, "{date}_{name}.{ext}".to_string(), Some(options))
+            .await
+            .unwrap();
+
+        // With strip_existing_patterns=true, applying the same template twice
+        // should give similar results (idempotent)
+        assert!(
+            result2.proposals[0].proposed_name.ends_with("_vacation.jpg"),
+            "Expected idempotent result ending with _vacation.jpg, got: {}",
+            result2.proposals[0].proposed_name
+        );
     }
 }

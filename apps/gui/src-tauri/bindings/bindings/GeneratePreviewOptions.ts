@@ -33,4 +33,10 @@ organizeOptions: OrganizeOptions | null,
 /**
  * Case style for filename normalization
  */
-caseStyle: CaseStyle, };
+caseStyle: CaseStyle, 
+/**
+ * Strip existing date/counter patterns from filename before applying template
+ * This prevents duplicate dates when re-applying templates (e.g., "2024-01-15_2024-01-15_photo")
+ * Default: false (for backward compatibility)
+ */
+stripExistingPatterns: boolean, };
