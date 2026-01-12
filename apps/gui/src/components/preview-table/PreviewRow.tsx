@@ -13,7 +13,6 @@ import {
   Minus,
   Ban,
   ChevronDown,
-  ChevronRight,
   FolderOutput,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -134,6 +133,19 @@ export function PreviewRow({
     }
   };
 
+  // Handle double-click to expand/collapse
+  const handleDoubleClick = (event: React.MouseEvent) => {
+    // Don't toggle expand if clicking on interactive elements
+    const target = event.target as HTMLElement;
+    if (target.closest("button") || target.closest('[role="checkbox"]')) return;
+
+    if (hasExpandableContent && onToggleExpand) {
+      event.preventDefault();
+      event.stopPropagation();
+      onToggleExpand();
+    }
+  };
+
   // Handle checkbox change
   const handleCheckboxChange = () => {
     onToggleSelection();
@@ -141,26 +153,37 @@ export function PreviewRow({
 
   // Handle keyboard interaction for accessibility
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (!canSelect) return;
     if (event.key === "Enter" || event.key === " ") {
+      if (canSelect) {
+        event.preventDefault();
+        onToggleSelection();
+      }
+    }
+    // Press 'e' to expand/collapse
+    if (event.key === "e" && hasExpandableContent && onToggleExpand) {
       event.preventDefault();
-      onToggleSelection();
+      onToggleExpand();
     }
   };
 
   return (
     <div
       role={canSelect ? "button" : undefined}
-      tabIndex={canSelect ? 0 : undefined}
+      tabIndex={canSelect || hasExpandableContent ? 0 : undefined}
       className={cn(
         "flex flex-col border-b transition-colors",
         statusConfig.bgClass,
         isSelected && "bg-primary/5",
-        canSelect && "cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+        isExpanded && "bg-muted/30",
+        canSelect && "cursor-pointer",
+        hasExpandableContent && !canSelect && "cursor-pointer",
+        "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-inset"
       )}
       onClick={handleRowClick}
+      onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}
       aria-pressed={canSelect ? isSelected : undefined}
+      aria-expanded={hasExpandableContent ? isExpanded : undefined}
       data-testid={`preview-row-${proposal.id}`}
     >
       {/* Main Row */}
@@ -223,16 +246,19 @@ export function PreviewRow({
             <Button
               variant="ghost"
               size="icon"
-              onClick={onToggleExpand}
-              className="h-6 w-6"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand();
+              }}
+              className="h-8 w-8 -mr-1"
               aria-label={isExpanded ? "Collapse details" : "Expand details"}
+              title="Double-click row or press 'e' to expand"
               data-testid={`preview-expand-${proposal.id}`}
             >
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              )}
+              <ChevronDown className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                !isExpanded && "-rotate-90"
+              )} />
             </Button>
           )}
         </div>

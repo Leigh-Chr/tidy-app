@@ -209,7 +209,8 @@ describe("PreviewPanel", () => {
       render(<PreviewPanel />);
 
       expect(screen.getByTestId("preview-panel-loading")).toBeInTheDocument();
-      expect(screen.getByText("Generating preview...")).toBeInTheDocument();
+      // "Calm & Confident" text
+      expect(screen.getByText("Preparing preview...")).toBeInTheDocument();
     });
   });
 
@@ -222,7 +223,8 @@ describe("PreviewPanel", () => {
       render(<PreviewPanel />);
 
       expect(screen.getByTestId("preview-panel-error")).toBeInTheDocument();
-      expect(screen.getByText("Failed to generate preview")).toBeInTheDocument();
+      // "Calm & Confident" text
+      expect(screen.getByText("Something went wrong")).toBeInTheDocument();
       expect(screen.getByText("Failed to read file metadata")).toBeInTheDocument();
     });
   });
@@ -350,8 +352,8 @@ describe("PreviewPanel", () => {
       render(<PreviewPanel />);
 
       expect(screen.getByTestId("rename-progress-card")).toBeInTheDocument();
-      // Progress shows file count when available
-      expect(screen.getByText("Renaming file 1 of 3...")).toBeInTheDocument();
+      // "Calm & Confident" progress text - "Working on X of Y"
+      expect(screen.getByText("Working on 1 of 3")).toBeInTheDocument();
     });
   });
 });

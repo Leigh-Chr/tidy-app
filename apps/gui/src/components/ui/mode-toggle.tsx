@@ -1,47 +1,61 @@
 /**
  * Theme mode toggle component
- * Allows switching between light, dark, and system themes
+ * Cycles between light, dark, and system themes on click
  */
 
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "./button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "./dropdown-menu";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./tooltip";
+
+const THEME_ORDER = ["light", "dark", "system"] as const;
+const THEME_LABELS: Record<string, string> = {
+  light: "Light mode",
+  dark: "Dark mode",
+  system: "System preference",
+};
 
 export function ModeToggle() {
-  const { setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
+
+  const cycleTheme = () => {
+    const currentIndex = THEME_ORDER.indexOf(theme as typeof THEME_ORDER[number]);
+    const nextIndex = (currentIndex + 1) % THEME_ORDER.length;
+    setTheme(THEME_ORDER[nextIndex]);
+  };
+
+  // Determine which icon to show based on current theme
+  const isSystem = theme === "system";
+  const isDark = isSystem ? resolvedTheme === "dark" : theme === "dark";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Change theme">
-          <Sun
-            className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0"
-            aria-hidden="true"
-          />
-          <Moon
-            className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100"
-            aria-hidden="true"
-          />
-          <span className="sr-only">Change theme</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setTheme("light")}>
-          Light
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
-          Dark
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>
-          System
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={cycleTheme}
+            aria-label={`Current: ${THEME_LABELS[theme ?? "system"]}. Click to change.`}
+          >
+            {isSystem ? (
+              <Monitor className="h-[1.2rem] w-[1.2rem]" aria-hidden="true" />
+            ) : isDark ? (
+              <Moon className="h-[1.2rem] w-[1.2rem]" aria-hidden="true" />
+            ) : (
+              <Sun className="h-[1.2rem] w-[1.2rem]" aria-hidden="true" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{THEME_LABELS[theme ?? "system"]}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

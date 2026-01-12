@@ -52,8 +52,8 @@ export function RenameProgress({
             <div className="flex justify-between text-sm mb-2">
               <span data-testid="rename-progress-label">
                 {hasFileCount
-                  ? `Renaming file ${currentFile} of ${totalFiles}...`
-                  : "Renaming files..."}
+                  ? `Working on ${currentFile} of ${totalFiles}`
+                  : "Working..."}
               </span>
               <span className="text-muted-foreground">{displayProgress}%</span>
             </div>
@@ -77,7 +77,7 @@ export function RenameProgress({
   return (
     <Card
       className={cn(
-        "p-4",
+        "p-5",
         isFullSuccess && "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950",
         isPartialSuccess && "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950",
         isFullFailure && "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950"
@@ -87,7 +87,9 @@ export function RenameProgress({
       <div className="flex items-start gap-4">
         {/* Status Icon */}
         {isFullSuccess && (
-          <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400 flex-shrink-0" />
+          <div className="flex-shrink-0 rounded-full bg-green-100 dark:bg-green-900/50 p-1">
+            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+          </div>
         )}
         {isPartialSuccess && (
           <AlertCircle className="h-6 w-6 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
@@ -108,9 +110,9 @@ export function RenameProgress({
             )}
             data-testid="rename-result-title"
           >
-            {isFullSuccess && "Rename Complete!"}
-            {isPartialSuccess && "Rename Partially Complete"}
-            {isFullFailure && "Rename Failed"}
+            {isFullSuccess && "All done"}
+            {isPartialSuccess && "Partially done"}
+            {isFullFailure && "Something went wrong"}
           </h4>
 
           {/* Summary */}
@@ -135,7 +137,7 @@ export function RenameProgress({
           {/* Error Details */}
           {result.summary.failed > 0 && (
             <div className="mt-2" data-testid="rename-result-errors">
-              <p className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">Failed files:</p>
+              <p className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">These could not be renamed:</p>
               <ul className="text-xs space-y-1 max-h-32 overflow-auto">
                 {result.results
                   .filter((r) => r.outcome === "failed")

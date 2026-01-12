@@ -1,6 +1,11 @@
 /**
  * Tests for ActionBar component
  * Story 6.4 - Task 6
+ *
+ * Updated for simplified "Calm & Confident" design:
+ * - Stats moved to tooltip
+ * - Minimal selection display
+ * - Focus on main CTA
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -37,24 +42,7 @@ describe("ActionBar", () => {
       expect(screen.getByTestId("action-bar")).toBeInTheDocument();
     });
 
-    it("displays safety message when no changes applied", () => {
-      render(
-        <ActionBar
-          summary={createMockSummary()}
-          selectedCount={0}
-          hasApplied={false}
-          isApplying={false}
-          onSelectAllReady={() => {}}
-          onDeselectAll={() => {}}
-          onApply={() => {}}
-        />
-      );
-
-      expect(screen.getByTestId("action-bar-safety-message")).toBeInTheDocument();
-      expect(screen.getByText(/Nothing has changed yet/)).toBeInTheDocument();
-    });
-
-    it("displays applied message when changes have been applied", () => {
+    it("displays Done state when changes have been applied", () => {
       render(
         <ActionBar
           summary={createMockSummary()}
@@ -67,8 +55,7 @@ describe("ActionBar", () => {
         />
       );
 
-      expect(screen.getByTestId("action-bar-applied-message")).toBeInTheDocument();
-      expect(screen.getByText(/Changes have been applied/)).toBeInTheDocument();
+      expect(screen.getByText("Done")).toBeInTheDocument();
     });
   });
 
@@ -86,7 +73,7 @@ describe("ActionBar", () => {
         />
       );
 
-      expect(screen.getByText(/3 of 5 ready files selected/)).toBeInTheDocument();
+      expect(screen.getByTestId("action-bar-selection")).toHaveTextContent("3 selected");
     });
 
     it("shows zero selection when nothing selected", () => {
@@ -102,7 +89,23 @@ describe("ActionBar", () => {
         />
       );
 
-      expect(screen.getByText(/0 of 5 ready files selected/)).toBeInTheDocument();
+      expect(screen.getByTestId("action-bar-selection")).toHaveTextContent("0 selected");
+    });
+
+    it("shows 'of X ready' when there are issues", () => {
+      render(
+        <ActionBar
+          summary={createMockSummary({ ready: 5, conflicts: 2 })}
+          selectedCount={3}
+          hasApplied={false}
+          isApplying={false}
+          onSelectAllReady={() => {}}
+          onDeselectAll={() => {}}
+          onApply={() => {}}
+        />
+      );
+
+      expect(screen.getByTestId("action-bar-selection")).toHaveTextContent("of 5 ready");
     });
   });
 
@@ -178,10 +181,10 @@ describe("ActionBar", () => {
   });
 
   describe("clear button", () => {
-    it("shows Clear button when files are selected", () => {
+    it("shows Clear button when files are selected but not all", () => {
       render(
         <ActionBar
-          summary={createMockSummary()}
+          summary={createMockSummary({ ready: 5 })}
           selectedCount={3}
           hasApplied={false}
           isApplying={false}
@@ -210,13 +213,29 @@ describe("ActionBar", () => {
       expect(screen.queryByTestId("action-bar-deselect-all")).not.toBeInTheDocument();
     });
 
+    it("hides Clear button when all ready files are selected", () => {
+      render(
+        <ActionBar
+          summary={createMockSummary({ ready: 5 })}
+          selectedCount={5}
+          hasApplied={false}
+          isApplying={false}
+          onSelectAllReady={() => {}}
+          onDeselectAll={() => {}}
+          onApply={() => {}}
+        />
+      );
+
+      expect(screen.queryByTestId("action-bar-deselect-all")).not.toBeInTheDocument();
+    });
+
     it("calls onDeselectAll when clicked", async () => {
       const user = userEvent.setup();
       const onDeselectAll = vi.fn();
 
       render(
         <ActionBar
-          summary={createMockSummary()}
+          summary={createMockSummary({ ready: 5 })}
           selectedCount={3}
           hasApplied={false}
           isApplying={false}
@@ -233,7 +252,7 @@ describe("ActionBar", () => {
   });
 
   describe("apply button", () => {
-    it("displays Apply Rename button", () => {
+    it("displays Rename button with file count", () => {
       render(
         <ActionBar
           summary={createMockSummary()}
@@ -247,14 +266,14 @@ describe("ActionBar", () => {
       );
 
       expect(screen.getByTestId("action-bar-apply")).toBeInTheDocument();
-      expect(screen.getByText(/Apply Rename/)).toBeInTheDocument();
+      expect(screen.getByText("Rename 3 files")).toBeInTheDocument();
     });
 
-    it("shows selected count in button when files selected", () => {
+    it("shows singular 'file' for single selection", () => {
       render(
         <ActionBar
           summary={createMockSummary()}
-          selectedCount={3}
+          selectedCount={1}
           hasApplied={false}
           isApplying={false}
           onSelectAllReady={() => {}}
@@ -263,7 +282,7 @@ describe("ActionBar", () => {
         />
       );
 
-      expect(screen.getByText("(3)")).toBeInTheDocument();
+      expect(screen.getByText("Rename 1 file")).toBeInTheDocument();
     });
 
     it("disables Apply button when no files selected", () => {
@@ -298,7 +317,7 @@ describe("ActionBar", () => {
       expect(screen.getByTestId("action-bar-apply")).not.toBeDisabled();
     });
 
-    it("shows Applying... text when applying", () => {
+    it("shows Working... text when applying", () => {
       render(
         <ActionBar
           summary={createMockSummary()}
@@ -311,7 +330,7 @@ describe("ActionBar", () => {
         />
       );
 
-      expect(screen.getByText("Applying...")).toBeInTheDocument();
+      expect(screen.getByText("Working...")).toBeInTheDocument();
     });
 
     it("disables Apply button when applying", () => {
@@ -349,52 +368,6 @@ describe("ActionBar", () => {
       await user.click(screen.getByTestId("action-bar-apply"));
 
       expect(onApply).toHaveBeenCalled();
-    });
-  });
-
-  describe("summary stats", () => {
-    it("displays summary statistics", () => {
-      render(
-        <ActionBar
-          summary={createMockSummary({
-            total: 10,
-            ready: 5,
-            conflicts: 2,
-            missingData: 1,
-            noChange: 2,
-          })}
-          selectedCount={0}
-          hasApplied={false}
-          isApplying={false}
-          onSelectAllReady={() => {}}
-          onDeselectAll={() => {}}
-          onApply={() => {}}
-        />
-      );
-
-      const summary = screen.getByTestId("action-bar-summary");
-      expect(summary).toBeInTheDocument();
-      expect(summary).toHaveTextContent("5 ready");
-      expect(summary).toHaveTextContent("2 conflicts");
-      expect(summary).toHaveTextContent("1 missing data");
-      expect(summary).toHaveTextContent("2 no change");
-      expect(summary).toHaveTextContent("10 total files");
-    });
-
-    it("hides conflict stat when zero", () => {
-      render(
-        <ActionBar
-          summary={createMockSummary({ conflicts: 0 })}
-          selectedCount={0}
-          hasApplied={false}
-          isApplying={false}
-          onSelectAllReady={() => {}}
-          onDeselectAll={() => {}}
-          onApply={() => {}}
-        />
-      );
-
-      expect(screen.queryByText(/conflicts/)).not.toBeInTheDocument();
     });
   });
 });

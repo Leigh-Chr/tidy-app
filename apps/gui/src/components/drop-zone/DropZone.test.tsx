@@ -1,6 +1,9 @@
 /**
  * Tests for DropZone component
  * Task 1.5: Write component tests for drag-drop states
+ *
+ * Updated for "Calm & Confident" design:
+ * - Simplified copy and messaging
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -19,17 +22,8 @@ describe("DropZone", () => {
       render(<DropZone onFolderSelect={mockOnFolderSelect} />);
 
       expect(screen.getByText(/drop a folder here/i)).toBeInTheDocument();
-      // "or" and "Browse" button are in separate elements
-      expect(screen.getByText(/^or$/i)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /browse/i })).toBeInTheDocument();
-    });
-
-    it("displays privacy message", () => {
-      render(<DropZone onFolderSelect={mockOnFolderSelect} />);
-
-      expect(
-        screen.getByText(/your files never leave your computer/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/or browse to select one/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /browse folders/i })).toBeInTheDocument();
     });
 
     it("has dashed border in default state", () => {
@@ -64,7 +58,7 @@ describe("DropZone", () => {
         dataTransfer: { types: ["Files"] },
       });
 
-      expect(screen.getByText(/drop to scan/i)).toBeInTheDocument();
+      expect(screen.getByText(/release to begin/i)).toBeInTheDocument();
     });
 
     it("reverts to default state on drag leave", () => {
@@ -139,7 +133,7 @@ describe("DropZone", () => {
       render(<DropZone onFolderSelect={mockOnFolderSelect} />);
 
       expect(
-        screen.getByRole("button", { name: /browse/i })
+        screen.getByRole("button", { name: /browse folders/i })
       ).toBeInTheDocument();
     });
 
@@ -152,7 +146,7 @@ describe("DropZone", () => {
         />
       );
 
-      const browseButton = screen.getByRole("button", { name: /browse/i });
+      const browseButton = screen.getByRole("button", { name: /browse folders/i });
       fireEvent.click(browseButton);
 
       expect(mockOnBrowseClick).toHaveBeenCalledTimes(1);
@@ -184,7 +178,7 @@ describe("DropZone", () => {
     it("disables browse button when disabled", () => {
       render(<DropZone onFolderSelect={mockOnFolderSelect} disabled />);
 
-      const browseButton = screen.getByRole("button", { name: /browse/i });
+      const browseButton = screen.getByRole("button", { name: /browse folders/i });
       expect(browseButton).toBeDisabled();
     });
   });
@@ -193,7 +187,7 @@ describe("DropZone", () => {
     it("shows loading indicator when isLoading is true", () => {
       render(<DropZone onFolderSelect={mockOnFolderSelect} isLoading />);
 
-      expect(screen.getByText(/scanning/i)).toBeInTheDocument();
+      expect(screen.getByText(/exploring your files/i)).toBeInTheDocument();
     });
 
     it("hides default prompt when loading", () => {

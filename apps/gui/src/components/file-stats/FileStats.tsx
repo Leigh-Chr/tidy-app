@@ -84,10 +84,10 @@ export function FileStats({
   if (stats.total === 0) {
     return (
       <Card className={cn("", className)} data-testid="file-stats">
-        <CardContent className="py-6">
+        <CardContent className="py-8">
           <div className="text-center text-muted-foreground" data-testid="file-stats-empty">
-            <p className="text-lg font-medium">No files found</p>
-            <p className="text-sm">Try adjusting your filters or scanning a different folder</p>
+            <p className="text-lg font-medium">No files here</p>
+            <p className="text-sm mt-1">Try different filters or another folder</p>
           </div>
         </CardContent>
       </Card>

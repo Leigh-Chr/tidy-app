@@ -72,8 +72,8 @@ describe("App", () => {
 
     // Version is displayed (may appear in multiple places)
     expect(screen.getAllByText("v0.2.0").length).toBeGreaterThan(0);
-    // Privacy message is displayed (may appear in multiple places)
-    expect(screen.getAllByText("Your files never leave your computer").length).toBeGreaterThan(0);
+    // DropZone is displayed
+    expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
   });
 
   it("displays error state when version load fails", async () => {
@@ -114,7 +114,8 @@ describe("App", () => {
       expect(mockInvoke).toHaveBeenCalled();
     });
 
-    expect(screen.getByText(/Welcome to tidy-app/i)).toBeInTheDocument();
+    // "Calm & Confident" welcome message
+    expect(screen.getByText(/Bring order to your files/i)).toBeInTheDocument();
     // DropZone component displays this text
     expect(screen.getByText(/Drop a folder here/i)).toBeInTheDocument();
   });
@@ -140,7 +141,7 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/No files found/i)).toBeInTheDocument();
+      expect(screen.getByText(/No files here/i)).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: /Try Another Folder/i })).toBeInTheDocument();
   });

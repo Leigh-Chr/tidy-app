@@ -75,7 +75,7 @@ export function TemplateList({ templates }: TemplateListProps) {
     setTimeout(() => {
       setIsCreating(false);
       setEditingTemplate(null);
-    }, 200);
+    }, 150);
   };
 
   const isEditing = isCreating || editingTemplate;
@@ -89,7 +89,7 @@ export function TemplateList({ templates }: TemplateListProps) {
       {/* Slide container for smooth transitions */}
       <div
         className={cn(
-          "transition-transform duration-200 ease-out",
+          "transition-transform duration-150 ease-out",
           showEditor && "-translate-x-full"
         )}
       >
@@ -203,7 +203,7 @@ export function TemplateList({ templates }: TemplateListProps) {
       {isEditing && (
         <div
           className={cn(
-            "absolute inset-0 bg-background transition-transform duration-200 ease-out",
+            "absolute inset-0 bg-background transition-transform duration-150 ease-out",
             showEditor ? "translate-x-0" : "translate-x-full"
           )}
         >

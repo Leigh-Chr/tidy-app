@@ -7,6 +7,9 @@ function Progress({
   value,
   ...props
 }: React.ComponentProps<typeof ProgressPrimitive.Root>) {
+  const numValue = value ?? 0;
+  const isAnimating = numValue > 0 && numValue < 100;
+
   return (
     <ProgressPrimitive.Root
       data-slot="progress"
@@ -18,8 +21,11 @@ function Progress({
     >
       <ProgressPrimitive.Indicator
         data-slot="progress-indicator"
-        className="h-full w-full flex-1 bg-primary transition-all transition-smooth duration-300"
-        style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+        className={cn(
+          "h-full w-full flex-1 bg-primary transition-transform duration-200",
+          isAnimating && "bg-gradient-to-r from-primary via-primary/80 to-primary"
+        )}
+        style={{ transform: `translateX(-${100 - numValue}%)` }}
       />
     </ProgressPrimitive.Root>
   )

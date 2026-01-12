@@ -40,6 +40,7 @@ import {
   listOpenAiModels,
   recordOperation,
 } from "@/lib/tauri";
+import type { AnalysisProgress } from "@/lib/tauri";
 
 // =============================================================================
 // Types
@@ -74,7 +75,7 @@ export function templateNeedsAi(templatePattern: string): boolean {
 }
 
 // Re-export types for consumers that import from the store
-export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult, ReorganizationMode, OrganizeOptions };
+export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult, ReorganizationMode, OrganizeOptions, AnalysisProgress };
 export type { CaseStyle } from "@/lib/tauri";
 
 export type Result<T, E = Error> =
@@ -131,6 +132,7 @@ export interface AppState {
 
   // AI Analysis State
   aiAnalysisStatus: AiAnalysisStatus;
+  aiAnalysisProgress: AnalysisProgress | null;
   aiSuggestions: Map<string, AiSuggestion>;
   aiAnalysisError: string | null;
   lastAnalysisResult: BatchAnalysisResult | null;
@@ -186,6 +188,7 @@ export interface AppState {
   // AI Analysis Actions
   analyzeFilesWithAi: (files: FileInfo[]) => Promise<Result<BatchAnalysisResult>>;
   clearAiSuggestions: () => void;
+  setAiAnalysisProgress: (progress: AnalysisProgress | null) => void;
 }
 
 // =============================================================================
@@ -227,6 +230,7 @@ const initialState = {
   llmError: null as string | null,
   // AI Analysis State
   aiAnalysisStatus: "idle" as AiAnalysisStatus,
+  aiAnalysisProgress: null as AnalysisProgress | null,
   aiSuggestions: new Map<string, AiSuggestion>(),
   aiAnalysisError: null as string | null,
   lastAnalysisResult: null as BatchAnalysisResult | null,
@@ -647,10 +651,16 @@ export const useAppStore = create<AppState>((set) => ({
         });
       }
 
+      // Auto-select all ready files by default (UX improvement)
+      const readyIds = preview.proposals
+        .filter((p) => p.status === "ready")
+        .map((p) => p.id);
+
       set({
         preview,
         previewStatus: "ready",
         previewError: null,
+        selectedProposalIds: new Set(readyIds),
       });
       return { ok: true, data: preview };
     } catch (e) {
@@ -1048,7 +1058,7 @@ export const useAppStore = create<AppState>((set) => ({
       return { ok: true, data: { ...emptyResult, _templateSkipped: true } as BatchAnalysisResult };
     }
 
-    set({ aiAnalysisStatus: "analyzing", aiAnalysisError: null });
+    set({ aiAnalysisStatus: "analyzing", aiAnalysisProgress: null, aiAnalysisError: null });
 
     try {
       const { selectedFolder } = useAppStore.getState();
@@ -1065,6 +1075,7 @@ export const useAppStore = create<AppState>((set) => ({
 
       set({
         aiAnalysisStatus: "done",
+        aiAnalysisProgress: null,
         aiSuggestions: suggestions,
         aiAnalysisError: null,
         lastAnalysisResult: result,
@@ -1082,6 +1093,7 @@ export const useAppStore = create<AppState>((set) => ({
       const errorMessage = e instanceof Error ? e.message : String(e);
       set({
         aiAnalysisStatus: "error",
+        aiAnalysisProgress: null,
         aiAnalysisError: errorMessage,
       });
       return { ok: false, error: e instanceof Error ? e : new Error(errorMessage) };
@@ -1091,6 +1103,7 @@ export const useAppStore = create<AppState>((set) => ({
   clearAiSuggestions: () => {
     set({
       aiAnalysisStatus: "idle",
+      aiAnalysisProgress: null,
       aiSuggestions: new Map<string, AiSuggestion>(),
       aiAnalysisError: null,
       lastAnalysisResult: null,
@@ -1101,5 +1114,9 @@ export const useAppStore = create<AppState>((set) => ({
     if (preview && scanResult) {
       useAppStore.getState().generatePreview(scanResult.files, preview.templateUsed);
     }
+  },
+
+  setAiAnalysisProgress: (progress: AnalysisProgress | null) => {
+    set({ aiAnalysisProgress: progress });
   },
 }));

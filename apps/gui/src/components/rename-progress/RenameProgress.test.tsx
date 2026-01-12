@@ -65,8 +65,9 @@ describe("RenameProgress", () => {
         />
       );
 
+      // "Calm & Confident" text - shows "Working..." when no file count
       expect(screen.getByTestId("rename-progress-label")).toHaveTextContent(
-        "Renaming files..."
+        "Working..."
       );
     });
 
@@ -102,8 +103,9 @@ describe("RenameProgress", () => {
         />
       );
 
+      // "Calm & Confident" text
       expect(screen.getByTestId("rename-result-title")).toHaveTextContent(
-        "Rename Complete!"
+        "All done"
       );
     });
 
@@ -158,8 +160,9 @@ describe("RenameProgress", () => {
         />
       );
 
+      // "Calm & Confident" text
       expect(screen.getByTestId("rename-result-title")).toHaveTextContent(
-        "Rename Partially Complete"
+        "Partially done"
       );
     });
 
@@ -191,8 +194,9 @@ describe("RenameProgress", () => {
         />
       );
 
+      // "Calm & Confident" text
       expect(screen.getByTestId("rename-result-title")).toHaveTextContent(
-        "Rename Failed"
+        "Something went wrong"
       );
     });
 

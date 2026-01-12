@@ -634,7 +634,7 @@ describe("useAppStore", () => {
   });
 
   describe("generatePreview", () => {
-    it("generates preview and updates store", async () => {
+    it("generates preview and auto-selects all ready files", async () => {
       mockInvoke.mockResolvedValueOnce(mockPreview);
 
       const result = await useAppStore.getState().generatePreview(mockFiles, "{date}_{name}.{ext}");
@@ -648,7 +648,8 @@ describe("useAppStore", () => {
       expect(state.preview).toEqual(mockPreview);
       expect(state.previewStatus).toBe("ready");
       expect(state.previewError).toBeNull();
-      expect(state.selectedProposalIds).toEqual(new Set());
+      // Auto-selects all ready files (proposal-1 and proposal-2 are "ready")
+      expect(state.selectedProposalIds).toEqual(new Set(["proposal-1", "proposal-2"]));
     });
 
     it("sets previewStatus to generating during generation", async () => {
@@ -664,10 +665,11 @@ describe("useAppStore", () => {
       expect(statusDuringCall).toBe("generating");
     });
 
-    it("clears previous selection when generating new preview", async () => {
-      // Set up some selections first
+    it("re-auto-selects ready files when generating new preview", async () => {
+      // Generate first preview (auto-selects 2 ready files)
       mockInvoke.mockResolvedValueOnce(mockPreview);
       await useAppStore.getState().generatePreview(mockFiles, "{date}_{name}.{ext}");
+      // Deselect one to modify selection
       useAppStore.getState().toggleProposalSelection("proposal-1");
       expect(useAppStore.getState().selectedProposalIds.size).toBe(1);
 
@@ -675,7 +677,8 @@ describe("useAppStore", () => {
       mockInvoke.mockResolvedValueOnce(mockPreview);
       await useAppStore.getState().generatePreview(mockFiles, "{year}_{name}.{ext}");
 
-      expect(useAppStore.getState().selectedProposalIds.size).toBe(0);
+      // Re-auto-selects all ready files
+      expect(useAppStore.getState().selectedProposalIds.size).toBe(2);
     });
 
     it("handles preview generation errors", async () => {
@@ -718,33 +721,36 @@ describe("useAppStore", () => {
       mockInvoke.mockResolvedValueOnce(mockPreview);
       await useAppStore.getState().generatePreview(mockFiles, "{date}_{name}.{ext}");
       mockInvoke.mockClear();
+      // After generatePreview, ready files are auto-selected (proposal-1, proposal-2)
     });
 
-    it("adds proposal to selection when not selected", () => {
-      useAppStore.getState().toggleProposalSelection("proposal-1");
-
-      const state = useAppStore.getState();
-      expect(state.selectedProposalIds.has("proposal-1")).toBe(true);
-      expect(state.selectedProposalIds.size).toBe(1);
-    });
-
-    it("removes proposal from selection when already selected", () => {
-      useAppStore.getState().toggleProposalSelection("proposal-1");
+    it("removes proposal from selection when already selected (auto-selected)", () => {
+      // proposal-1 is auto-selected, toggle removes it
       useAppStore.getState().toggleProposalSelection("proposal-1");
 
       const state = useAppStore.getState();
       expect(state.selectedProposalIds.has("proposal-1")).toBe(false);
-      expect(state.selectedProposalIds.size).toBe(0);
+      expect(state.selectedProposalIds.size).toBe(1); // proposal-2 still selected
     });
 
-    it("allows multiple selections", () => {
+    it("adds proposal back when toggled again", () => {
+      // Toggle once to remove from auto-selection
       useAppStore.getState().toggleProposalSelection("proposal-1");
-      useAppStore.getState().toggleProposalSelection("proposal-2");
+      // Toggle again to add back
+      useAppStore.getState().toggleProposalSelection("proposal-1");
 
       const state = useAppStore.getState();
       expect(state.selectedProposalIds.has("proposal-1")).toBe(true);
-      expect(state.selectedProposalIds.has("proposal-2")).toBe(true);
       expect(state.selectedProposalIds.size).toBe(2);
+    });
+
+    it("can add non-ready proposal to selection", () => {
+      // proposal-3 is "no-change" status, not auto-selected
+      useAppStore.getState().toggleProposalSelection("proposal-3");
+
+      const state = useAppStore.getState();
+      expect(state.selectedProposalIds.has("proposal-3")).toBe(true);
+      expect(state.selectedProposalIds.size).toBe(3); // 2 auto-selected + 1 manually added
     });
   });
 
@@ -779,11 +785,11 @@ describe("useAppStore", () => {
       mockInvoke.mockResolvedValueOnce(mockPreview);
       await useAppStore.getState().generatePreview(mockFiles, "{date}_{name}.{ext}");
       mockInvoke.mockClear();
+      // After generatePreview, ready files are auto-selected (proposal-1, proposal-2)
     });
 
-    it("clears all selections", () => {
-      useAppStore.getState().toggleProposalSelection("proposal-1");
-      useAppStore.getState().toggleProposalSelection("proposal-2");
+    it("clears all selections including auto-selected", () => {
+      // Verify auto-selection happened
       expect(useAppStore.getState().selectedProposalIds.size).toBe(2);
 
       useAppStore.getState().deselectAll();
@@ -798,11 +804,12 @@ describe("useAppStore", () => {
       mockInvoke.mockResolvedValueOnce(mockPreview);
       await useAppStore.getState().generatePreview(mockFiles, "{date}_{name}.{ext}");
       mockInvoke.mockClear();
+      // After generatePreview, ready files are auto-selected (proposal-1, proposal-2)
     });
 
-    it("applies renames for selected proposals", async () => {
-      useAppStore.getState().toggleProposalSelection("proposal-1");
-      useAppStore.getState().toggleProposalSelection("proposal-2");
+    it("applies renames for auto-selected proposals", async () => {
+      // Files are already auto-selected
+      expect(useAppStore.getState().selectedProposalIds.size).toBe(2);
 
       mockInvoke.mockResolvedValueOnce(mockBatchRenameResult);
 
@@ -832,8 +839,7 @@ describe("useAppStore", () => {
     });
 
     it("sets previewStatus to applying during execution", async () => {
-      useAppStore.getState().toggleProposalSelection("proposal-1");
-
+      // Files are already auto-selected
       let statusDuringCall: string | null = null;
       mockInvoke.mockImplementationOnce(async () => {
         statusDuringCall = useAppStore.getState().previewStatus;
@@ -856,7 +862,10 @@ describe("useAppStore", () => {
       }
     });
 
-    it("returns error if no files selected", async () => {
+    it("returns error if no files selected after deselecting all", async () => {
+      // Deselect all auto-selected files
+      useAppStore.getState().deselectAll();
+
       const result = await useAppStore.getState().applyRenames();
 
       expect(result.ok).toBe(false);
@@ -866,8 +875,7 @@ describe("useAppStore", () => {
     });
 
     it("handles rename execution errors", async () => {
-      useAppStore.getState().toggleProposalSelection("proposal-1");
-
+      // Files are already auto-selected
       const error = new Error("File system error");
       mockInvoke.mockRejectedValueOnce(error);
 
