@@ -24,6 +24,11 @@ import {
   isFilePlaceholder,
 } from '../templates/resolvers/file-resolver.js';
 import { normalizeFolderPattern, validateFolderPattern } from './folder-pattern.js';
+import {
+  normalizeFolderName,
+  DEFAULT_CASE_STYLE,
+  type CaseStyle,
+} from '../templates/utils/case-normalizer.js';
 
 // =============================================================================
 // Types
@@ -37,6 +42,16 @@ export interface ResolveFolderPathOptions {
   fallbacks?: Record<string, string>;
   /** Base directory for the resolved path (not included in resolvedPath, used later) */
   baseDirectory?: string;
+  /**
+   * Case normalization style for folder names.
+   * Applied to each path segment individually.
+   *
+   * Options: 'none' | 'lowercase' | 'uppercase' | 'capitalize' |
+   *          'title-case' | 'kebab-case' | 'snake_case' | 'camelCase' | 'PascalCase'
+   *
+   * Default: 'kebab-case' (recommended for maximum compatibility)
+   */
+  caseNormalization?: CaseStyle;
 }
 
 /**
@@ -133,10 +148,21 @@ function sanitizePathSegment(segment: string): string {
   // Remove characters that are invalid in folder names (including control chars \x00-\x1f)
   return (
     segment
-       
+
       .replace(/[<>:"|?*\x00-\x1f]/g, '')
       .trim()
   );
+}
+
+/**
+ * Sanitize and optionally normalize case of a path segment.
+ */
+function processPathSegment(segment: string, caseStyle: CaseStyle): string {
+  const sanitized = sanitizePathSegment(segment);
+  if (caseStyle === 'none') {
+    return sanitized;
+  }
+  return normalizeFolderName(sanitized, caseStyle);
 }
 
 // =============================================================================
@@ -172,6 +198,7 @@ export function resolveFolderPath(
   options: ResolveFolderPathOptions = {}
 ): Result<FolderPathResolution, FolderResolutionError> {
   const fallbacks = options.fallbacks ?? {};
+  const caseStyle = options.caseNormalization ?? DEFAULT_CASE_STYLE;
 
   // Validate the pattern
   const validation = validateFolderPattern(pattern);
@@ -206,7 +233,8 @@ export function resolveFolderPath(
 
     if (result.value !== null) {
       resolvedPlaceholders.push(placeholder);
-      resolutionMap.set(placeholder, sanitizePathSegment(result.value));
+      // Apply sanitization and case normalization to each path segment
+      resolutionMap.set(placeholder, processPathSegment(result.value, caseStyle));
       if (result.usedFallback) {
         usedFallbacks = true;
       }

@@ -77,7 +77,7 @@ describe('previewFile', () => {
   describe('basic preview (AC1)', () => {
     it('generates preview for simple template with original name', () => {
       const file = createMockFile();
-      const result = previewFile(file, '{original}');
+      const result = previewFile(file, '{original}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -90,7 +90,7 @@ describe('previewFile', () => {
     it('generates preview with date placeholders from EXIF', () => {
       const file = createMockFile();
       const metadata = { imageMetadata: createMockImageMetadata() };
-      const result = previewFile(file, '{year}-{month}-{day}_{original}', metadata);
+      const result = previewFile(file, '{year}-{month}-{day}_{original}', metadata, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -104,7 +104,7 @@ describe('previewFile', () => {
     it('generates preview with camera metadata placeholder', () => {
       const file = createMockFile();
       const metadata = { imageMetadata: createMockImageMetadata() };
-      const result = previewFile(file, '{camera}_{original}', metadata);
+      const result = previewFile(file, '{camera}_{original}', metadata, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -115,7 +115,7 @@ describe('previewFile', () => {
 
     it('generates preview with file size placeholder', () => {
       const file = createMockFile();
-      const result = previewFile(file, '{original}_{size}');
+      const result = previewFile(file, '{original}_{size}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -125,7 +125,7 @@ describe('previewFile', () => {
 
     it('generates preview with extension placeholder', () => {
       const file = createMockFile();
-      const result = previewFile(file, '{original}.{ext}', {}, { includeExtension: false });
+      const result = previewFile(file, '{original}.{ext}', {}, { includeExtension: false, caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -136,7 +136,7 @@ describe('previewFile', () => {
     it('preserves directory in proposed path', () => {
       const file = createMockFile({ path: '/home/user/photos/vacation.jpg' });
       const metadata = { imageMetadata: createMockImageMetadata() };
-      const result = previewFile(file, '{year}_{original}', metadata);
+      const result = previewFile(file, '{year}_{original}', metadata, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -153,7 +153,7 @@ describe('previewFile', () => {
     it('identifies empty placeholders when metadata is missing', () => {
       const file = createMockFile();
       // No metadata provided, so {camera} will be empty
-      const result = previewFile(file, '{camera}_{original}');
+      const result = previewFile(file, '{camera}_{original}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -171,7 +171,7 @@ describe('previewFile', () => {
           cameraModel: null,
         }),
       };
-      const result = previewFile(file, '{camera}_{original}', metadata);
+      const result = previewFile(file, '{camera}_{original}', metadata, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -184,7 +184,7 @@ describe('previewFile', () => {
     it('lists all empty placeholders in emptyPlaceholders array', () => {
       const file = createMockFile();
       // Multiple missing placeholders
-      const result = previewFile(file, '{author}_{title}_{original}');
+      const result = previewFile(file, '{author}_{title}_{original}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -202,7 +202,7 @@ describe('previewFile', () => {
     it('tracks EXIF source for date placeholders from image metadata', () => {
       const file = createMockFile();
       const metadata = { imageMetadata: createMockImageMetadata() };
-      const result = previewFile(file, '{year}_{original}', metadata);
+      const result = previewFile(file, '{year}_{original}', metadata, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -219,7 +219,7 @@ describe('previewFile', () => {
         category: FileCategory.PDF,
       });
       const metadata = { pdfMetadata: createMockPdfMetadata() };
-      const result = previewFile(file, '{author}_{original}', metadata);
+      const result = previewFile(file, '{author}_{original}', metadata, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -237,7 +237,7 @@ describe('previewFile', () => {
         category: FileCategory.DOCUMENT,
       });
       const metadata = { officeMetadata: createMockOfficeMetadata() };
-      const result = previewFile(file, '{author}_{original}', metadata);
+      const result = previewFile(file, '{author}_{original}', metadata, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -249,7 +249,7 @@ describe('previewFile', () => {
 
     it('tracks filesystem source for file placeholders', () => {
       const file = createMockFile();
-      const result = previewFile(file, '{original}_{ext}');
+      const result = previewFile(file, '{original}_{ext}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -266,7 +266,7 @@ describe('previewFile', () => {
     it('tracks filesystem source for date when no metadata available', () => {
       const file = createMockFile();
       // No metadata - should fall back to filesystem date
-      const result = previewFile(file, '{year}_{original}');
+      const result = previewFile(file, '{year}_{original}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -287,7 +287,7 @@ describe('previewFile', () => {
         file,
         '{author}_{original}',
         {},
-        { fallbacks: { author: 'Unknown' } }
+        { fallbacks: { author: 'Unknown' }, caseNormalization: 'none' }
       );
 
       expect(result.ok).toBe(true);
@@ -307,7 +307,7 @@ describe('previewFile', () => {
         file,
         '{author}_{original}',
         {},
-        { fallbacks: { author: 'Unknown' } }
+        { fallbacks: { author: 'Unknown' }, caseNormalization: 'none' }
       );
 
       expect(result.ok).toBe(true);
@@ -323,7 +323,7 @@ describe('previewFile', () => {
         file,
         '{author}_{original}',
         metadata,
-        { fallbacks: { author: 'Unknown' } }
+        { fallbacks: { author: 'Unknown' }, caseNormalization: 'none' }
       );
 
       expect(result.ok).toBe(true);
@@ -338,7 +338,7 @@ describe('previewFile', () => {
 
     it('marks usedFallback false when no fallback configured', () => {
       const file = createMockFile();
-      const result = previewFile(file, '{author}_{original}');
+      const result = previewFile(file, '{author}_{original}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -402,7 +402,7 @@ describe('previewFile', () => {
   describe('extension handling', () => {
     it('adds extension by default', () => {
       const file = createMockFile();
-      const result = previewFile(file, '{original}');
+      const result = previewFile(file, '{original}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -412,7 +412,7 @@ describe('previewFile', () => {
 
     it('does not duplicate extension if already in template', () => {
       const file = createMockFile();
-      const result = previewFile(file, '{original}.{ext}');
+      const result = previewFile(file, '{original}.{ext}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -423,7 +423,7 @@ describe('previewFile', () => {
 
     it('can skip extension when requested', () => {
       const file = createMockFile();
-      const result = previewFile(file, '{original}', {}, { includeExtension: false });
+      const result = previewFile(file, '{original}', {}, { includeExtension: false, caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -437,7 +437,7 @@ describe('previewFile', () => {
         name: 'readme',
         extension: '',
       });
-      const result = previewFile(file, '{original}_copy');
+      const result = previewFile(file, '{original}_copy', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -457,7 +457,7 @@ describe('previewFile', () => {
         path: '/photos/my photo:file.jpg',
         name: 'my photo:file',
       });
-      const result = previewFile(file, '{original}');
+      const result = previewFile(file, '{original}', {}, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -474,6 +474,7 @@ describe('previewFile', () => {
       const result = previewFile(file, '{title}', metadata, {
         sanitizeFilenames: false,
         includeExtension: false,
+        caseNormalization: 'none',
       });
 
       expect(result.ok).toBe(true);
@@ -569,7 +570,7 @@ describe('previewFiles', () => {
         { file: createMockFile({ path: '/photos/photo3.jpg', name: 'photo3' }) },
       ];
 
-      const result = previewFiles(files, '{original}_renamed');
+      const result = previewFiles(files, '{original}_renamed', { caseNormalization: 'none' });
 
       expect(result.totalFiles).toBe(3);
       expect(result.results).toHaveLength(3);
@@ -590,7 +591,7 @@ describe('previewFiles', () => {
         },
       ];
 
-      const result = previewFiles(files, '{camera}_{original}');
+      const result = previewFiles(files, '{camera}_{original}', { caseNormalization: 'none' });
 
       expect(result.readyCount).toBe(1);
       expect(result.warningCount).toBe(1);
@@ -604,7 +605,7 @@ describe('previewFiles', () => {
       ];
 
       // Use a template that works for all
-      const result = previewFiles(files, '{original}');
+      const result = previewFiles(files, '{original}', { caseNormalization: 'none' });
 
       expect(result.totalFiles).toBe(2);
       expect(result.results).toHaveLength(2);
@@ -633,6 +634,7 @@ describe('previewFiles', () => {
 
       const result = previewFiles(files, '{author}_{original}', {
         fallbacks: { author: 'Unknown' },
+        caseNormalization: 'none',
       });
 
       expect(result.results[0].proposedName).toBe('Unknown_photo1.jpg');
@@ -669,7 +671,7 @@ describe('previewFiles', () => {
         },
       ];
 
-      const result = previewFiles(files, '{year}_{original}');
+      const result = previewFiles(files, '{year}_{original}', { caseNormalization: 'none' });
 
       expect(result.results[0].proposedName).toBe('2025_photo.jpg');
       expect(result.results[1].proposedName).toBe('2025_report.pdf');
@@ -685,7 +687,7 @@ describe('previewFiles', () => {
 describe('formatPreviewResult', () => {
   it('formats ready result with OK status', () => {
     const file = createMockFile();
-    const result = previewFile(file, '{original}');
+    const result = previewFile(file, '{original}', {}, { caseNormalization: 'none' });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -698,7 +700,7 @@ describe('formatPreviewResult', () => {
 
   it('formats result with warnings', () => {
     const file = createMockFile();
-    const result = previewFile(file, '{camera}_{original}');
+    const result = previewFile(file, '{camera}_{original}', {}, { caseNormalization: 'none' });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -711,7 +713,7 @@ describe('formatPreviewResult', () => {
   it('shows resolution sources', () => {
     const file = createMockFile();
     const metadata = { imageMetadata: createMockImageMetadata() };
-    const result = previewFile(file, '{year}_{original}', metadata);
+    const result = previewFile(file, '{year}_{original}', metadata, { caseNormalization: 'none' });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -751,7 +753,7 @@ describe('formatPreviewResult', () => {
       file,
       '{author}_{original}',
       {},
-      { fallbacks: { author: 'Unknown' } }
+      { fallbacks: { author: 'Unknown' }, caseNormalization: 'none' }
     );
 
     expect(result.ok).toBe(true);
@@ -774,7 +776,7 @@ describe('formatBatchPreview', () => {
       { file: createMockFile({ name: 'photo2' }) },
     ];
 
-    const result = previewFiles(files, '{original}');
+    const result = previewFiles(files, '{original}', { caseNormalization: 'none' });
     const formatted = formatBatchPreview(result);
 
     expect(formatted).toContain('Template: "{original}"');
@@ -795,7 +797,7 @@ describe('formatBatchPreview', () => {
       },
     ];
 
-    const result = previewFiles(files, '{camera}_{original}');
+    const result = previewFiles(files, '{camera}_{original}', { caseNormalization: 'none' });
     const formatted = formatBatchPreview(result);
 
     expect(formatted).toContain('1 ready');

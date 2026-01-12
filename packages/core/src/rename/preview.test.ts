@@ -46,7 +46,7 @@ describe('generatePreview - AC1: Dry-run without file modification', () => {
     const files = [createMockFile()];
     const metadataMap = new Map<string, FileMetadata>();
 
-    const result = generatePreview(files, metadataMap, '{original}_renamed');
+    const result = generatePreview(files, metadataMap, '{original}_renamed', { caseNormalization: 'none' });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -61,7 +61,7 @@ describe('generatePreview - AC1: Dry-run without file modification', () => {
     const files = [file];
     const metadataMap = new Map<string, FileMetadata>();
 
-    const result = generatePreview(files, metadataMap, '{original}_copy');
+    const result = generatePreview(files, metadataMap, '{original}_copy', { caseNormalization: 'none' });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -76,7 +76,7 @@ describe('generatePreview - AC1: Dry-run without file modification', () => {
     const metadataMap = new Map<string, FileMetadata>();
 
     // Valid template should return ok Result
-    const result = generatePreview(files, metadataMap, '{original}_renamed');
+    const result = generatePreview(files, metadataMap, '{original}_renamed', { caseNormalization: 'none' });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -472,6 +472,7 @@ describe('generatePreview - Options', () => {
 
     const result = generatePreview([file], metadataMap, '{camera}_{original}', {
       fallbacks: { camera: 'Unknown' },
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -488,6 +489,7 @@ describe('generatePreview - Options', () => {
     // With sanitizeFilenames: false, dashes should be preserved
     const result = generatePreview(files, metadataMap, '{original}-copy', {
       sanitizeFilenames: false,
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -522,7 +524,7 @@ describe('generatePreview - OS sanitization integration (Story 4.7)', () => {
     const metadataMap = new Map<string, FileMetadata>();
 
     // Template produces Windows reserved name (CON is not handled by template sanitization)
-    const result = generatePreview([file], metadataMap, 'CON');
+    const result = generatePreview([file], metadataMap, 'CON', { caseNormalization: 'none' });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -544,6 +546,7 @@ describe('generatePreview - OS sanitization integration (Story 4.7)', () => {
     const longName = 'a'.repeat(300);
     const result = generatePreview([file], metadataMap, longName, {
       sanitizeFilenames: false, // Disable template sanitization so OS sanitization handles it
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -566,6 +569,7 @@ describe('generatePreview - OS sanitization integration (Story 4.7)', () => {
     // Need to disable template sanitization to test OS sanitization
     const result = generatePreview([file], metadataMap, 'photo ', {
       sanitizeFilenames: false, // Disable template sanitization
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -585,6 +589,7 @@ describe('generatePreview - OS sanitization integration (Story 4.7)', () => {
     const result = generatePreview([file], metadataMap, 'CON', {
       sanitizeFilenames: false,
       osSanitizeOptions: false,
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);

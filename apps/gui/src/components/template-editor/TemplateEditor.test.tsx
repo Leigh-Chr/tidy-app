@@ -405,8 +405,13 @@ describe("TemplateEditor", () => {
     it("shows available placeholders hint", () => {
       render(<TemplateEditor onClose={mockOnClose} />);
 
-      expect(screen.getByText(/available placeholders/i)).toBeInTheDocument();
+      // Check for name placeholders documentation
+      expect(screen.getByText(/Name:/i)).toBeInTheDocument();
       expect(screen.getByText(/{name}/)).toBeInTheDocument();
+      expect(screen.getByText(/{original}/)).toBeInTheDocument();
+      expect(screen.getByText(/{ai}/)).toBeInTheDocument();
+      // Check for other placeholders
+      expect(screen.getByText(/Other:/i)).toBeInTheDocument();
       expect(screen.getByText(/{ext}/)).toBeInTheDocument();
       expect(screen.getByText(/{date}/)).toBeInTheDocument();
     });

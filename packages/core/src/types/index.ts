@@ -103,6 +103,8 @@ export type {
   FilePreviewResult,
   BatchPreviewResult,
   PreviewOptions,
+  // AI integration types (Story 10.3 enhancement)
+  AiSuggestion,
 } from './template.js';
 export {
   templateTokenSchema,

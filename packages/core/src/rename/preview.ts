@@ -15,6 +15,7 @@ import type {
 import { RenameStatus } from '../types/rename-proposal.js';
 import { previewFile } from '../templates/preview.js';
 import { isValidFilename } from '../templates/utils/sanitize.js';
+import type { CaseStyle } from '../templates/utils/case-normalizer.js';
 import { detectFilesystemCollisions, type FilesystemCheckOptions } from './conflicts.js';
 import { sanitizeFilename, type SanitizeOptions } from './sanitize.js';
 
@@ -54,6 +55,11 @@ export interface GeneratePreviewOptions {
    * @default { targetPlatform: 'all' }
    */
   osSanitizeOptions?: SanitizeOptions | false;
+  /**
+   * Case normalization style for filenames.
+   * @default 'kebab-case'
+   */
+  caseNormalization?: CaseStyle;
 }
 
 /**
@@ -110,6 +116,7 @@ export function generatePreview(
     checkFileSystem = true,
     caseSensitive,
     osSanitizeOptions,
+    caseNormalization,
   } = options;
   const proposals: RenameProposal[] = [];
 
@@ -135,7 +142,7 @@ export function generatePreview(
         file,
         metadata,
         templatePattern,
-        { fallbacks, sanitizeFilenames, osSanitizeOptions }
+        { fallbacks, sanitizeFilenames, osSanitizeOptions, caseNormalization }
       );
       proposals.push(proposal);
 
@@ -193,6 +200,7 @@ function createProposal(
     fallbacks?: Record<string, string>;
     sanitizeFilenames?: boolean;
     osSanitizeOptions?: SanitizeOptions | false;
+    caseNormalization?: CaseStyle;
   }
 ): RenameProposal {
   const id = randomUUID();
@@ -206,6 +214,7 @@ function createProposal(
     fallbacks: options.fallbacks,
     sanitizeFilenames: options.sanitizeFilenames,
     includeExtension: true,
+    caseNormalization: options.caseNormalization,
   });
 
   if (!previewResult.ok) {

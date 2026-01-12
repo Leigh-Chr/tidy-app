@@ -181,9 +181,14 @@ export function TemplateEditor({ template, onClose }: TemplateEditorProps) {
             {errors.pattern}
           </p>
         )}
-        <p className="text-xs text-muted-foreground">
-          Available placeholders: {"{name}"}, {"{ext}"}, {"{date}"}, {"{date:FORMAT}"}
-        </p>
+        <div className="text-xs text-muted-foreground space-y-1">
+          <p>
+            <strong>Name:</strong> {"{name}"} (smart: AI or original), {"{original}"} (always original), {"{ai}"} (AI only)
+          </p>
+          <p>
+            <strong>Other:</strong> {"{ext}"}, {"{date}"}, {"{date:FORMAT}"}, {"{year}"}, {"{month}"}, {"{day}"}
+          </p>
+        </div>
       </div>
 
       {/* Live Preview */}

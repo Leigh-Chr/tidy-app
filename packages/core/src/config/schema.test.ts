@@ -82,6 +82,7 @@ describe('preferencesSchema with rulePriorityMode', () => {
       confirmBeforeApply: true,
       recursiveScan: false,
       rulePriorityMode: 'filename-first',
+      caseNormalization: 'kebab-case',
     });
   });
 });

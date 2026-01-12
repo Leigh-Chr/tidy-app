@@ -28,7 +28,9 @@ import type {
 import type { OllamaConfig } from '../llm/types.js';
 import type { AnalysisResult } from '../llm/analysis.js';
 import { RenameStatus } from '../types/rename-proposal.js';
+import type { CaseStyle } from '../templates/utils/case-normalizer.js';
 import { previewFile } from '../templates/preview.js';
+import type { AiSuggestion } from '../types/template.js';
 import { isValidFilename } from '../templates/utils/sanitize.js';
 import { detectFilesystemCollisions, type FilesystemCheckOptions } from './conflicts.js';
 import { sanitizeFilename, type SanitizeOptions } from './sanitize.js';
@@ -115,6 +117,11 @@ export interface GeneratePreviewWithRulesOptions {
    * Suggestions below this threshold will not be used. Default: 0.7
    */
   llmConfidenceThreshold?: number;
+  /**
+   * Case normalization style for filenames.
+   * @default 'kebab-case'
+   */
+  caseNormalization?: CaseStyle;
 }
 
 /**
@@ -189,6 +196,7 @@ export function generatePreviewWithRules(
     llmAnalysisResults,
     llmConfidenceThreshold = 0.7,
     onLlmProgress,
+    caseNormalization,
   } = options;
 
   // Validate default template exists
@@ -259,6 +267,7 @@ export function generatePreviewWithRules(
           llmResult,
           llmConfidenceThreshold,
           llmAnalysisFailed,
+          caseNormalization,
         }
       );
       proposals.push(proposal);
@@ -409,6 +418,7 @@ function createProposal(
     llmResult?: AnalysisResult;
     llmConfidenceThreshold?: number;
     llmAnalysisFailed?: boolean;
+    caseNormalization?: CaseStyle;
   }
 ): RenameProposal {
   const id = randomUUID();
@@ -456,68 +466,91 @@ function createProposal(
       }
     : {};
 
-  // Story 10.3: Use LLM suggestion if confidence is high enough
-  if (useLlmSuggestion && llmSuggestion) {
-    // Use LLM-suggested name with file extension
-    const extension = file.extension ?? '';
-    proposedName = `${llmSuggestion.suggestedName}${extension}`;
-    proposedPath = join(dirname(file.path), proposedName);
-    templateSource = 'llm';
+  // Story 10.3: Build AI suggestion for template system if LLM is available and confident
+  // Instead of bypassing the template, we pass the AI suggestion through the template system.
+  // This ensures all files follow the same template structure while benefiting from AI naming.
+  const aiSuggestionForTemplate: AiSuggestion | undefined =
+    useLlmSuggestion && llmSuggestion
+      ? {
+          suggestedName: llmSuggestion.suggestedName,
+          confidence: llmSuggestion.confidence,
+          reasoning: llmSuggestion.reasoning,
+        }
+      : undefined;
 
-    // Add informational issue about LLM usage
+  // Track if AI was used for template resolution
+  if (aiSuggestionForTemplate) {
+    templateSource = 'llm';
     issues.push({
       code: 'LLM_SUGGESTION_USED',
-      message: `Using LLM suggestion (confidence: ${(llmSuggestion.confidence * 100).toFixed(0)}%)`,
+      message: `Using LLM suggestion (confidence: ${(llmSuggestion!.confidence * 100).toFixed(0)}%)`,
     });
+  }
+
+  // Apply template using the existing preview system
+  // AI suggestion is passed through PlaceholderContext and resolved by:
+  // - {name}: Uses AI suggestion if available, otherwise original filename (recommended)
+  // - {original}: Always uses original filename (ignores AI)
+  // - {ai}: Only uses AI suggestion (empty if not available)
+  // This ensures template structure is preserved while giving users control over AI naming
+  const previewResult = previewFile(file, templateResolution.template.pattern, fileMetadata, {
+    fallbacks: options.fallbacks,
+    sanitizeFilenames: options.sanitizeFilenames,
+    includeExtension: true,
+    caseNormalization: options.caseNormalization,
+    aiSuggestion: aiSuggestionForTemplate,
+  });
+
+  if (!previewResult.ok) {
+    // Template application failed
+    proposedName = file.extension ? `${file.name}.${file.extension}` : file.name;
+    proposedPath = file.path;
+    issues.push({
+      code: 'TEMPLATE_ERROR',
+      message: previewResult.error.message,
+    });
+    status = RenameStatus.MISSING_DATA;
   } else {
-    // Apply template using the existing preview system
-    const previewResult = previewFile(file, templateResolution.template.pattern, fileMetadata, {
-      fallbacks: options.fallbacks,
-      sanitizeFilenames: options.sanitizeFilenames,
-      includeExtension: true,
-    });
+    const preview = previewResult.data;
+    proposedName = preview.proposedName;
+    proposedPath = preview.proposedPath;
 
-    if (!previewResult.ok) {
-      // Template application failed
-      proposedName = file.extension ? `${file.name}${file.extension}` : file.name;
-      proposedPath = file.path;
-      issues.push({
-        code: 'TEMPLATE_ERROR',
-        message: previewResult.error.message,
-      });
-      status = RenameStatus.MISSING_DATA;
-    } else {
-      const preview = previewResult.data;
-      proposedName = preview.proposedName;
-      proposedPath = preview.proposedPath;
-
-      // Check for empty placeholders (indicates missing metadata)
-      if (preview.hasEmptyPlaceholders) {
-        for (const placeholder of preview.emptyPlaceholders) {
-          issues.push({
-            code: 'MISSING_METADATA',
-            message: `Placeholder {${placeholder}} could not be filled`,
-            field: placeholder,
-          });
-        }
-        status = RenameStatus.MISSING_DATA;
-      }
-
-      // Check for fallback usage (warning but not error)
-      const fallbackResolutions = preview.resolutions.filter((r) => r.usedFallback);
-      for (const res of fallbackResolutions) {
+    // Check for empty placeholders (indicates missing metadata)
+    if (preview.hasEmptyPlaceholders) {
+      for (const placeholder of preview.emptyPlaceholders) {
         issues.push({
-          code: 'USED_FALLBACK',
-          message: `Used fallback value for {${res.placeholder}}`,
-          field: res.placeholder,
+          code: 'MISSING_METADATA',
+          message: `Placeholder {${placeholder}} could not be filled`,
+          field: placeholder,
         });
       }
+      status = RenameStatus.MISSING_DATA;
+    }
 
-      // Check if name would be unchanged (only if not already flagged as missing data)
-      const originalName = file.extension ? `${file.name}${file.extension}` : file.name;
-      if (proposedName === originalName && status === RenameStatus.READY) {
-        status = RenameStatus.NO_CHANGE;
-      }
+    // Check for fallback usage (warning but not error)
+    const fallbackResolutions = preview.resolutions.filter((r) => r.usedFallback);
+    for (const res of fallbackResolutions) {
+      issues.push({
+        code: 'USED_FALLBACK',
+        message: `Used fallback value for {${res.placeholder}}`,
+        field: res.placeholder,
+      });
+    }
+
+    // Check for AI source in resolutions (informational tracking)
+    const aiResolutions = preview.resolutions.filter((r) => r.source === 'ai');
+    for (const res of aiResolutions) {
+      issues.push({
+        code: 'AI_PLACEHOLDER_RESOLVED',
+        message: `Placeholder {${res.placeholder}} resolved from AI suggestion`,
+        field: res.placeholder,
+      });
+    }
+
+    // Check if name would be unchanged (only if not already flagged as missing data)
+    const originalName = file.extension ? `${file.name}.${file.extension}` : file.name;
+    if (proposedName === originalName && status === RenameStatus.READY) {
+      status = RenameStatus.NO_CHANGE;
     }
   }
 

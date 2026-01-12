@@ -17,6 +17,10 @@ import { randomUUID } from 'node:crypto';
 import { metadataPatternRuleSchema } from '../types/rule.js';
 import { filenamePatternRuleSchema } from '../types/filename-rule.js';
 import { folderStructureSchema } from '../types/folder-structure.js';
+import { caseStyleSchema, type CaseStyle, DEFAULT_CASE_STYLE } from '../templates/utils/case-normalizer.js';
+
+// Re-export case style types for consumers
+export { caseStyleSchema, type CaseStyle, DEFAULT_CASE_STYLE };
 
 // =============================================================================
 // Template Schema
@@ -67,6 +71,22 @@ export const preferencesSchema = z.object({
   recursiveScan: z.boolean().default(false),
   /** Rule priority mode for template resolution (Story 7.4) */
   rulePriorityMode: rulePriorityModeSchema.default('combined'),
+  /**
+   * Case normalization style for filenames and folder names.
+   * Applied to both file names and folder path segments.
+   *
+   * Options:
+   * - 'none': No transformation
+   * - 'lowercase': all lowercase
+   * - 'uppercase': ALL UPPERCASE
+   * - 'capitalize': First letter uppercase
+   * - 'title-case': Each Word Capitalized
+   * - 'kebab-case': words-separated-by-hyphens (RECOMMENDED - default)
+   * - 'snake_case': words_separated_by_underscores
+   * - 'camelCase': wordsJoinedWithCamelCase
+   * - 'PascalCase': WordsJoinedWithPascalCase
+   */
+  caseNormalization: caseStyleSchema.default(DEFAULT_CASE_STYLE),
 });
 
 export type Preferences = z.infer<typeof preferencesSchema>;
@@ -80,6 +100,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   confirmBeforeApply: true,
   recursiveScan: false,
   rulePriorityMode: 'combined',
+  caseNormalization: DEFAULT_CASE_STYLE,
 };
 
 // =============================================================================
@@ -149,13 +170,17 @@ const DEFAULT_TIMESTAMP = '2024-01-01T00:00:00.000Z';
  * Default templates available when no configuration exists.
  * These provide sensible starting points for common use cases.
  *
+ * Note: Templates use {name} placeholder which uses AI suggestion if available,
+ * otherwise falls back to original filename. Use {original} to always keep
+ * the original filename, or {ai} for AI-only suggestions.
+ *
  * AC1: Default templates available - users can immediately use them
  */
 export const DEFAULT_TEMPLATES: Template[] = [
   {
     id: randomUUID(),
     name: 'Date Prefix',
-    pattern: '{date}-{original}',
+    pattern: '{date}-{name}',
     fileTypes: ['jpg', 'jpeg', 'png', 'heic', 'webp', 'gif'],
     isDefault: true,
     createdAt: DEFAULT_TIMESTAMP,
@@ -164,7 +189,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
   {
     id: randomUUID(),
     name: 'Year/Month Folders',
-    pattern: '{year}/{month}/{original}',
+    pattern: '{year}/{month}/{name}',
     fileTypes: ['jpg', 'jpeg', 'png', 'heic', 'webp', 'gif'],
     isDefault: false,
     createdAt: DEFAULT_TIMESTAMP,
@@ -173,7 +198,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
   {
     id: randomUUID(),
     name: 'Camera + Date',
-    pattern: '{camera}-{date}-{original}',
+    pattern: '{camera}-{date}-{name}',
     fileTypes: ['jpg', 'jpeg', 'png', 'heic'],
     isDefault: false,
     createdAt: DEFAULT_TIMESTAMP,
@@ -182,7 +207,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
   {
     id: randomUUID(),
     name: 'Document Date',
-    pattern: '{date}-{original}',
+    pattern: '{date}-{name}',
     fileTypes: ['pdf', 'docx', 'xlsx', 'pptx'],
     isDefault: false,
     createdAt: DEFAULT_TIMESTAMP,
@@ -220,6 +245,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     confirmBeforeApply: true,
     recursiveScan: false,
     rulePriorityMode: 'combined',
+    caseNormalization: DEFAULT_CASE_STYLE,
   },
   recentFolders: [],
   rules: [],

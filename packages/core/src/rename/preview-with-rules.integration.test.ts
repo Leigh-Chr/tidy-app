@@ -33,7 +33,7 @@ import { MetadataCapability } from '../types/metadata-capability.js';
 const createFileInfo = (overrides: Partial<FileInfo> = {}): FileInfo => ({
   path: '/photos/IMG_1234.jpg',
   name: 'IMG_1234',
-  extension: '.jpg',
+  extension: 'jpg', // Extension without leading dot per FileInfo schema
   fullName: 'IMG_1234.jpg',
   size: 2048,
   createdAt: new Date('2026-01-15'),
@@ -142,6 +142,7 @@ describe('Integration: Rule creation and template matching', () => {
       filenameRules: [],
       templates,
       defaultTemplateId: TEMPLATE_IDS.default,
+      caseNormalization: 'none',
     };
 
     const result = generatePreviewWithRules([file], metadataMap, options);
@@ -187,7 +188,7 @@ describe('Integration: Rule creation and template matching', () => {
     const file = createFileInfo({
       path: '/screenshots/Screenshot_2026-01-15.png',
       name: 'Screenshot_2026-01-15',
-      extension: '.png',
+      extension: 'png',
       fullName: 'Screenshot_2026-01-15.png',
       category: FileCategory.IMAGE,
     });
@@ -275,6 +276,7 @@ describe('Integration: Multiple rules with priorities', () => {
       filenameRules: [],
       templates,
       defaultTemplateId: TEMPLATE_IDS.default,
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -327,14 +329,14 @@ describe('Integration: Multiple rules with priorities', () => {
     const pdfFile = createFileInfo({
       path: '/docs/report.pdf',
       name: 'report',
-      extension: '.pdf',
+      extension: 'pdf',
       fullName: 'report.pdf',
       category: FileCategory.PDF,
     });
     const otherFile = createFileInfo({
       path: '/files/random.txt',
       name: 'random',
-      extension: '.txt',
+      extension: 'txt',
       fullName: 'random.txt',
       category: FileCategory.OTHER,
     });
@@ -353,6 +355,7 @@ describe('Integration: Multiple rules with priorities', () => {
         filenameRules,
         templates,
         defaultTemplateId: TEMPLATE_IDS.default,
+        caseNormalization: 'none',
       }
     );
 
@@ -435,6 +438,7 @@ describe('Integration: Priority modes', () => {
       templates,
       defaultTemplateId: TEMPLATE_IDS.default,
       rulePriorityMode: 'combined',
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -455,6 +459,7 @@ describe('Integration: Priority modes', () => {
       templates,
       defaultTemplateId: TEMPLATE_IDS.default,
       rulePriorityMode: 'metadata-first',
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -475,6 +480,7 @@ describe('Integration: Priority modes', () => {
       templates,
       defaultTemplateId: TEMPLATE_IDS.default,
       rulePriorityMode: 'filename-first',
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -521,6 +527,7 @@ describe('Integration: Missing template fallback', () => {
       filenameRules: [],
       templates,
       defaultTemplateId: TEMPLATE_IDS.default,
+      caseNormalization: 'none',
     });
 
     expect(result.ok).toBe(true);
@@ -654,7 +661,7 @@ describe('Integration: End-to-end flow', () => {
       createFileInfo({
         path: '/batch/report.pdf',
         name: 'report',
-        extension: '.pdf',
+        extension: 'pdf',
         fullName: 'report.pdf',
         category: FileCategory.PDF,
       }),
@@ -668,7 +675,7 @@ describe('Integration: End-to-end flow', () => {
       createFileInfo({
         path: '/batch/readme.txt',
         name: 'readme',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'readme.txt',
         category: FileCategory.OTHER,
       }),

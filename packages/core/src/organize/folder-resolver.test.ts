@@ -140,7 +140,7 @@ describe('resolveFolderPath', () => {
       const file = createTestFile();
       const metadata = createUnifiedMetadata(file, { image: createImageMetadata() });
 
-      const result = resolveFolderPath('Photos/{year}/{month}', metadata, file);
+      const result = resolveFolderPath('Photos/{year}/{month}', metadata, file, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -246,7 +246,7 @@ describe('resolveFolderPath', () => {
       const pdf = createPdfMetadata({ author: 'Jane Author' });
       const metadata = createUnifiedMetadata(file, { pdf });
 
-      const result = resolveFolderPath('{year}/{author}', metadata, file);
+      const result = resolveFolderPath('{year}/{author}', metadata, file, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -260,7 +260,7 @@ describe('resolveFolderPath', () => {
       const image = createImageMetadata({ cameraMake: 'Canon', cameraModel: 'EOS 5D' });
       const metadata = createUnifiedMetadata(file, { image });
 
-      const result = resolveFolderPath('{camera}/{year}', metadata, file);
+      const result = resolveFolderPath('{camera}/{year}', metadata, file, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -294,6 +294,7 @@ describe('resolveFolderPath', () => {
 
       const result = resolveFolderPath('{location}/{year}', metadata, file, {
         fallbacks: { location: 'Unknown' },
+        caseNormalization: 'none',
       });
 
       expect(result.ok).toBe(true);
@@ -454,7 +455,7 @@ describe('resolveFolderPath', () => {
       const file = createTestFile({ name: 'MyPhoto' });
       const metadata = createUnifiedMetadata(file);
 
-      const result = resolveFolderPath('{year}/{original}', metadata, file);
+      const result = resolveFolderPath('{year}/{original}', metadata, file, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -466,7 +467,7 @@ describe('resolveFolderPath', () => {
       const file = createTestFile({ size: 1048576 });
       const metadata = createUnifiedMetadata(file, { image: createImageMetadata() });
 
-      const result = resolveFolderPath('{size}/{year}', metadata, file);
+      const result = resolveFolderPath('{size}/{year}', metadata, file, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -507,6 +508,7 @@ describe('resolveFolderPath', () => {
           location: 'Unknown_Location',
           camera: 'Unknown_Camera',
         },
+        caseNormalization: 'none',
       });
 
       expect(result.ok).toBe(true);
@@ -530,7 +532,8 @@ describe('resolveFolderPath', () => {
       const result = resolveFolderPath(
         '{camera}/{year}/{month}/{day}',
         metadata,
-        file
+        file,
+        { caseNormalization: 'none' }
       );
 
       expect(result.ok).toBe(true);
@@ -548,7 +551,8 @@ describe('resolveFolderPath', () => {
       const result = resolveFolderPath(
         'Archive-{year}/Month-{month}',
         metadata,
-        file
+        file,
+        { caseNormalization: 'none' }
       );
 
       expect(result.ok).toBe(true);
@@ -623,7 +627,7 @@ describe('resolveFolderPath', () => {
       const pdf = createPdfMetadata({ author: '  John Smith  ' });
       const metadata = createUnifiedMetadata(file, { pdf });
 
-      const result = resolveFolderPath('{author}/{year}', metadata, file);
+      const result = resolveFolderPath('{author}/{year}', metadata, file, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {

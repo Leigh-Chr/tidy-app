@@ -27,6 +27,7 @@ import {
   isFilePlaceholder,
 } from './resolvers/file-resolver.js';
 import { sanitizeFilename } from './utils/sanitize.js';
+import { normalizeFilename, DEFAULT_CASE_STYLE } from './utils/case-normalizer.js';
 
 /**
  * Error types for preview operations
@@ -46,6 +47,7 @@ const VALID_PREVIEW_SOURCES: readonly PreviewPlaceholderSource[] = [
   'filesystem',
   'fallback',
   'literal',
+  'ai',
 ];
 
 /**
@@ -110,17 +112,22 @@ function resolvePlaceholder(
     };
   }
 
-  // File placeholders
+  // File placeholders (including {name}, {original}, {ai})
   if (isFilePlaceholder(placeholderName)) {
     const result = resolveFilePlaceholder(placeholderName, context, {
       sanitizeForFilename: options.sanitizeFilenames ?? true,
+      fallbacks: options.fallbacks,
     });
+
+    // Check if the resolver used a fallback (source is 'literal' with non-empty fallback)
+    const usedFallback = result.source === 'literal' && fallbackValue !== '' && result.value === fallbackValue;
+
     return {
       placeholder: placeholderName,
       value: result.value,
-      source: toPreviewSource(result.source),
+      source: usedFallback ? 'fallback' : toPreviewSource(result.source),
       isEmpty: result.value === '',
-      usedFallback: false,
+      usedFallback,
     };
   }
 
@@ -174,6 +181,10 @@ function previewFileInternal(
     imageMetadata: metadata.imageMetadata ?? null,
     pdfMetadata: metadata.pdfMetadata ?? null,
     officeMetadata: metadata.officeMetadata ?? null,
+    // Include AI suggestion in context for {ai} placeholder and replace-original mode
+    aiSuggestion: options.aiSuggestion ?? null,
+    // Include template pattern for smart name resolution (prevents date duplication)
+    templatePattern,
   };
 
   // Resolve all placeholders
@@ -193,6 +204,13 @@ function previewFileInternal(
   const includeExt = options.includeExtension ?? true;
   if (includeExt && file.extension && !proposedName.endsWith(`.${file.extension}`)) {
     proposedName = `${proposedName}.${file.extension}`;
+  }
+
+  // Apply case normalization (default: kebab-case for maximum compatibility)
+  // This normalizes the filename and ensures extension is lowercase
+  const caseStyle = options.caseNormalization ?? DEFAULT_CASE_STYLE;
+  if (caseStyle !== 'none') {
+    proposedName = normalizeFilename(proposedName, caseStyle);
   }
 
   // Handle empty or invalid result (Issue 3: comprehensive checks)

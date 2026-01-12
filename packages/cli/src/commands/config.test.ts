@@ -96,7 +96,7 @@ describe('tidy config commands', () => {
       });
 
       expect(output).toContain('Date Prefix');
-      expect(output).toContain('{date}-{original}');
+      expect(output).toContain('{date}-{name}');
     });
   });
 

@@ -19,10 +19,27 @@ export {
   resolveFilePlaceholder,
   isFilePlaceholder,
   getFilePlaceholders,
+  templateNeedsAi,
+  AI_PLACEHOLDERS,
   type FilePlaceholder,
 } from './resolvers/index.js';
 
-export { sanitizeFilename, isValidFilename, formatBytes, parseBytes } from './utils/index.js';
+export {
+  sanitizeFilename,
+  isValidFilename,
+  formatBytes,
+  parseBytes,
+  // Case normalization
+  normalizeCase,
+  normalizeFilename,
+  normalizeFolderName,
+  normalizePath,
+  caseStyleSchema,
+  DEFAULT_CASE_STYLE,
+  type CaseStyle,
+  type CaseNormalizationOptions,
+  type CaseNormalizationResult,
+} from './utils/index.js';
 
 // Template Manager (Story 3.5)
 export {

@@ -16,5 +16,7 @@ export {
   resolveFilePlaceholder,
   isFilePlaceholder,
   getFilePlaceholders,
+  templateNeedsAi,
+  AI_PLACEHOLDERS,
   type FilePlaceholder,
 } from './file-resolver.js';
