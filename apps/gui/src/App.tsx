@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Lock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/stores/app-store";
@@ -9,12 +10,14 @@ import { ScanOptions } from "@/components/scan-options/ScanOptions";
 import { FileStats } from "@/components/file-stats/FileStats";
 import { ExportButton } from "@/components/export-button/ExportButton";
 import { TitleBar } from "@/components/titlebar/TitleBar";
+import { RecentFolders, addRecentFolder } from "@/components/recent-folders";
+import { Onboarding } from "@/components/onboarding";
 import { Toaster } from "@/components/ui/sonner";
 import { openFolderDialog } from "@/lib/tauri";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 function App() {
   const {
-    status,
     versionInfo,
     error,
     loadVersion,
@@ -28,6 +31,9 @@ function App() {
     preview,
     getFilteredFiles,
   } = useAppStore();
+
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts();
 
   // Get filtered files for display
   const filteredFiles = getFilteredFiles();
@@ -67,7 +73,10 @@ function App() {
     try {
       const path = await openFolderDialog();
       if (path) {
-        await selectFolder(path);
+        const result = await selectFolder(path);
+        if (result.ok) {
+          addRecentFolder(path, result.data.totalCount);
+        }
       }
     } catch (e) {
       console.error("Failed to open folder dialog:", e);
@@ -76,7 +85,20 @@ function App() {
 
   const handleFolderDrop = useCallback(
     async (path: string) => {
-      await selectFolder(path);
+      const result = await selectFolder(path);
+      if (result.ok) {
+        addRecentFolder(path, result.data.totalCount);
+      }
+    },
+    [selectFolder]
+  );
+
+  const handleRecentFolderSelect = useCallback(
+    async (path: string) => {
+      const result = await selectFolder(path);
+      if (result.ok) {
+        addRecentFolder(path, result.data.totalCount);
+      }
     },
     [selectFolder]
   );
@@ -120,52 +142,25 @@ function App() {
               {/* Scan Options */}
               <ScanOptions className="mt-6" />
 
-              {/* Status display - only show when no folder selected */}
-              <div className="mt-6 space-y-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Status:</span>
-                  <span
-                    className={
-                      status === "success"
-                        ? "text-green-600"
-                        : status === "error"
-                          ? "text-destructive"
-                          : status === "loading"
-                            ? "text-yellow-600"
-                            : "text-muted-foreground"
-                    }
-                  >
-                    {status === "idle" && "Ready"}
-                    {status === "loading" && "Loading..."}
-                    {status === "success" && "Connected"}
-                    {status === "error" && "Error"}
-                  </span>
-                </div>
+              {/* Recent Folders */}
+              <RecentFolders
+                onSelect={handleRecentFolderSelect}
+                currentFolder={selectedFolder}
+                className="mt-6"
+              />
 
-                {versionInfo && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Core version:</span>
-                    <span className="font-mono text-foreground">
-                      {versionInfo.core_version}
-                    </span>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                    {error}
-                  </div>
-                )}
-
-                <Button
-                  onClick={() => loadVersion()}
-                  variant="outline"
-                  className="w-full"
-                  disabled={status === "loading"}
-                >
-                  {status === "loading" ? "Loading..." : "Refresh Version"}
-                </Button>
+              {/* Privacy message */}
+              <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Lock className="h-4 w-4" aria-hidden="true" />
+                <span>Your files never leave your computer</span>
               </div>
+
+              {/* Error display only */}
+              {error && (
+                <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -247,10 +242,32 @@ function App() {
               <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive">
                 <p className="font-medium">Failed to scan folder</p>
                 <p className="mt-1">{scanError}</p>
+                {/* Actionable recovery suggestions */}
+                <div className="mt-3 pt-3 border-t border-destructive/20 text-xs space-y-1">
+                  <p className="font-medium">Suggestions:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-destructive/80">
+                    {scanError.toLowerCase().includes("permission") && (
+                      <li>Check that you have read access to this folder</li>
+                    )}
+                    {scanError.toLowerCase().includes("not found") && (
+                      <li>The folder may have been moved or deleted</li>
+                    )}
+                    {scanError.toLowerCase().includes("network") && (
+                      <li>Check your network connection if this is a remote folder</li>
+                    )}
+                    <li>Try selecting a different folder</li>
+                    <li>Ensure the folder contains files (not just subfolders)</li>
+                  </ul>
+                </div>
               </div>
-              <Button onClick={clearFolder} variant="outline" className="w-full mt-4">
-                Try Another Folder
-              </Button>
+              <div className="flex gap-2 mt-4">
+                <Button onClick={handleRescan} variant="secondary" className="flex-1">
+                  Retry Scan
+                </Button>
+                <Button onClick={clearFolder} variant="outline" className="flex-1">
+                  Try Another Folder
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -266,6 +283,9 @@ function App() {
 
       {/* Toast notifications */}
       <Toaster position="bottom-right" />
+
+      {/* Onboarding for new users */}
+      <Onboarding />
     </div>
   );
 }

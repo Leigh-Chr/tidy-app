@@ -13,6 +13,15 @@ import { vi } from "vitest";
 // Mock scrollIntoView for Radix UI components (not implemented in jsdom)
 Element.prototype.scrollIntoView = vi.fn();
 
+// Mock ResizeObserver for Radix UI Popper components (tooltips, popups, etc.)
+// Required for components that use @radix-ui/react-popper
+class ResizeObserverMock {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+window.ResizeObserver = ResizeObserverMock;
+
 // Mock matchMedia for components using media queries (e.g., next-themes, sonner)
 Object.defineProperty(window, "matchMedia", {
   writable: true,

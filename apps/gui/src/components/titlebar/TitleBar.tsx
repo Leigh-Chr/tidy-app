@@ -71,14 +71,14 @@ export function TitleBar({ showBreadcrumb = true, isMaximized = false, onMaximiz
         <button
           className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
           onClick={handleMinimize}
-          aria-label="Réduire"
+          aria-label="Minimize"
         >
           <Minus className="h-4 w-4" />
         </button>
         <button
           className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
           onClick={handleMaximize}
-          aria-label={isMaximized ? "Restaurer" : "Agrandir"}
+          aria-label={isMaximized ? "Restore" : "Maximize"}
         >
           {isMaximized ? (
             <Square className="h-3 w-3" />
@@ -89,7 +89,7 @@ export function TitleBar({ showBreadcrumb = true, isMaximized = false, onMaximiz
         <button
           className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors"
           onClick={handleClose}
-          aria-label="Fermer"
+          aria-label="Close"
         >
           <X className="h-4 w-4" />
         </button>

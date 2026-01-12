@@ -9,6 +9,7 @@
 
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 import type {
   AiSuggestion,
   AppConfig,
@@ -159,6 +160,7 @@ export interface AppState {
   // Preview Actions (Story 6.4)
   generatePreview: (files: FileInfo[], templatePattern: string) => Promise<Result<RenamePreview>>;
   toggleProposalSelection: (proposalId: string) => void;
+  selectProposals: (proposalIds: string[], addToSelection?: boolean) => void;
   selectAllReady: () => void;
   deselectAll: () => void;
   applyRenames: (proposalIds?: string[]) => Promise<Result<BatchRenameResult>>;
@@ -674,6 +676,18 @@ export const useAppStore = create<AppState>((set) => ({
     });
   },
 
+  selectProposals: (proposalIds: string[], addToSelection: boolean = false) => {
+    set((state) => {
+      const newSelection = addToSelection
+        ? new Set(state.selectedProposalIds)
+        : new Set<string>();
+      for (const id of proposalIds) {
+        newSelection.add(id);
+      }
+      return { selectedProposalIds: newSelection };
+    });
+  },
+
   selectAllReady: () => {
     const preview = useAppStore.getState().preview;
     if (!preview) return;
@@ -724,10 +738,13 @@ export const useAppStore = create<AppState>((set) => ({
       });
 
       // Record operation to history for undo support (Story 9.1)
-      // Fire and forget - don't block the UI
+      // Fire and forget - don't block the UI, but notify on failure
       if (result.summary.succeeded > 0) {
         recordOperation(result).catch((err) => {
           console.warn("Failed to record operation to history:", err);
+          toast.warning("Could not save to undo history. Changes were applied but may not be undoable.", {
+            duration: 5000,
+          });
         });
       }
 

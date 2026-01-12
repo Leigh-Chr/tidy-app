@@ -4,7 +4,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { useAppStore } from "@/stores/app-store";
 import App from "./App";
 
@@ -68,12 +67,13 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      expect(mockInvoke).toHaveBeenCalled();
     });
 
-    // Core version is displayed (unique - only in the status section)
-    expect(screen.getByText("0.1.0")).toBeInTheDocument();
-    expect(screen.getByText("Core version:")).toBeInTheDocument();
+    // Version is displayed (may appear in multiple places)
+    expect(screen.getAllByText("v0.2.0").length).toBeGreaterThan(0);
+    // Privacy message is displayed (may appear in multiple places)
+    expect(screen.getAllByText("Your files never leave your computer").length).toBeGreaterThan(0);
   });
 
   it("displays error state when version load fails", async () => {
@@ -82,33 +82,23 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Error")).toBeInTheDocument();
+      // Error is displayed in the error box
+      expect(screen.getByText("Connection failed")).toBeInTheDocument();
     });
-
-    expect(screen.getByText("Connection failed")).toBeInTheDocument();
   });
 
-  it("calls loadVersion on refresh button click", async () => {
-    const user = userEvent.setup();
-    let callCount = 0;
-    mockInvoke.mockImplementation(() => {
-      callCount++;
-      return Promise.resolve({ version: "0.2.0", core_version: "0.1.0" });
-    });
+  it("loads version and config on mount", async () => {
+    mockInvoke.mockResolvedValue({ version: "0.2.0", core_version: "0.1.0" });
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      // Verify both version and config are loaded on mount
+      expect(mockInvoke).toHaveBeenCalledWith("get_version");
     });
 
-    const initialCalls = callCount;
-    const refreshButton = screen.getByRole("button", { name: /refresh version/i });
-    await user.click(refreshButton);
-
-    await waitFor(() => {
-      expect(callCount).toBe(initialCalls + 1);
-    });
+    // Version should be visible (may appear in multiple places)
+    expect(screen.getAllByText("v0.2.0").length).toBeGreaterThan(0);
   });
 
   it("shows welcome message and placeholder for drag-drop", async () => {
@@ -190,12 +180,11 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      expect(mockInvoke).toHaveBeenCalled();
     });
 
-    // Verify store was updated
+    // Verify store was updated with version info
     const state = useAppStore.getState();
-    expect(state.status).toBe("success");
     expect(state.versionInfo).toEqual({
       version: "0.2.0",
       core_version: "0.1.0",

@@ -29,6 +29,8 @@ export interface PreviewRowProps {
   isSelected: boolean;
   /** Callback when selection is toggled */
   onToggleSelection: () => void;
+  /** Callback for selection with event (for shift+click) */
+  onSelectionClick?: (event: React.MouseEvent) => void;
   /** AI suggestion for this file (if analyzed) */
   aiSuggestion?: AiSuggestion;
   /** Whether details are expanded (controlled) */
@@ -42,11 +44,11 @@ const STATUS_DISPLAY: Record<
   RenameStatus,
   { icon: React.ElementType; className: string; bgClass: string }
 > = {
-  ready: { icon: Check, className: "text-green-600", bgClass: "hover:bg-green-50/50" },
-  conflict: { icon: AlertCircle, className: "text-red-600", bgClass: "hover:bg-red-50/50" },
-  "missing-data": { icon: AlertTriangle, className: "text-yellow-600", bgClass: "hover:bg-yellow-50/50" },
-  "invalid-name": { icon: Ban, className: "text-orange-600", bgClass: "hover:bg-orange-50/50" },
-  "no-change": { icon: Minus, className: "text-gray-400", bgClass: "hover:bg-gray-50/50" },
+  ready: { icon: Check, className: "text-green-600 dark:text-green-400", bgClass: "hover:bg-green-50/50 dark:hover:bg-green-950/30" },
+  conflict: { icon: AlertCircle, className: "text-red-600 dark:text-red-400", bgClass: "hover:bg-red-50/50 dark:hover:bg-red-950/30" },
+  "missing-data": { icon: AlertTriangle, className: "text-yellow-600 dark:text-yellow-400", bgClass: "hover:bg-yellow-50/50 dark:hover:bg-yellow-950/30" },
+  "invalid-name": { icon: Ban, className: "text-orange-600 dark:text-orange-400", bgClass: "hover:bg-orange-50/50 dark:hover:bg-orange-950/30" },
+  "no-change": { icon: Minus, className: "text-gray-400 dark:text-gray-500", bgClass: "hover:bg-gray-50/50 dark:hover:bg-gray-950/30" },
 };
 
 /**
@@ -105,6 +107,7 @@ export function PreviewRow({
   proposal,
   isSelected,
   onToggleSelection,
+  onSelectionClick,
   aiSuggestion,
   isExpanded = false,
   onToggleExpand,
@@ -117,13 +120,47 @@ export function PreviewRow({
   const isFolderMove = proposal.isFolderMove === true;
   const hasExpandableContent = hasIssues || proposal.metadataSources?.length || aiSuggestion || isFolderMove;
 
+  // Handle row click for selection (supports shift+click)
+  const handleRowClick = (event: React.MouseEvent) => {
+    if (!canSelect) return;
+    // Don't trigger row click if clicking on expand button or other interactive elements
+    const target = event.target as HTMLElement;
+    if (target.closest("button") || target.closest('[role="checkbox"]')) return;
+
+    if (onSelectionClick) {
+      onSelectionClick(event);
+    } else {
+      onToggleSelection();
+    }
+  };
+
+  // Handle checkbox change
+  const handleCheckboxChange = () => {
+    onToggleSelection();
+  };
+
+  // Handle keyboard interaction for accessibility
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (!canSelect) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onToggleSelection();
+    }
+  };
+
   return (
     <div
+      role={canSelect ? "button" : undefined}
+      tabIndex={canSelect ? 0 : undefined}
       className={cn(
         "flex flex-col border-b transition-colors",
         statusConfig.bgClass,
-        isSelected && "bg-primary/5"
+        isSelected && "bg-primary/5",
+        canSelect && "cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
       )}
+      onClick={handleRowClick}
+      onKeyDown={handleKeyDown}
+      aria-pressed={canSelect ? isSelected : undefined}
       data-testid={`preview-row-${proposal.id}`}
     >
       {/* Main Row */}
@@ -133,7 +170,7 @@ export function PreviewRow({
           {canSelect && (
             <Checkbox
               checked={isSelected}
-              onCheckedChange={onToggleSelection}
+              onCheckedChange={handleCheckboxChange}
               aria-label={`Select ${proposal.originalName}`}
               data-testid={`preview-checkbox-${proposal.id}`}
             />

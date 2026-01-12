@@ -77,7 +77,7 @@ export function ConfirmRename({
               )}
 
               <p className="text-sm text-muted-foreground">
-                This action cannot be undone automatically. Make sure you have backups
+                You can undo this operation from the history. We recommend having backups
                 of important files.
               </p>
             </div>

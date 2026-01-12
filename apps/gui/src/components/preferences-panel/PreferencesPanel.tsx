@@ -174,11 +174,12 @@ export function PreferencesPanel({ preferences }: PreferencesPanelProps) {
         />
       </div>
 
-      {/* Status indicator */}
+      {/* Status indicator with spinner overlay */}
       {isSaving && (
-        <p className="text-sm text-muted-foreground text-center" data-testid="saving-indicator">
-          Saving...
-        </p>
+        <div className="flex items-center justify-center gap-2 p-3 bg-muted/50 rounded-md" data-testid="saving-indicator">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span className="text-sm text-muted-foreground">Saving preferences...</span>
+        </div>
       )}
 
       {/* Error state */}

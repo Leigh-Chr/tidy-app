@@ -18,6 +18,10 @@ export interface RenameProgressProps {
   isInProgress: boolean;
   /** Progress percentage (0-100) */
   progress?: number;
+  /** Current file being processed */
+  currentFile?: number;
+  /** Total files to process */
+  totalFiles?: number;
   /** Result of the rename operation (after completion) */
   result?: BatchRenameResult | null;
   /** Callback to dismiss the result */
@@ -29,22 +33,31 @@ export interface RenameProgressProps {
 export function RenameProgress({
   isInProgress,
   progress = 0,
+  currentFile,
+  totalFiles,
   result,
   onDismiss,
   onUndo,
 }: RenameProgressProps) {
   // Show progress bar when in progress
   if (isInProgress) {
+    const hasFileCount = currentFile !== undefined && totalFiles !== undefined;
+    const displayProgress = hasFileCount ? Math.round((currentFile / totalFiles) * 100) : progress;
+
     return (
       <Card className="p-4" data-testid="rename-progress-card">
         <div className="flex items-center gap-4">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
           <div className="flex-1">
             <div className="flex justify-between text-sm mb-2">
-              <span data-testid="rename-progress-label">Renaming files...</span>
-              <span className="text-muted-foreground">{progress}%</span>
+              <span data-testid="rename-progress-label">
+                {hasFileCount
+                  ? `Renaming file ${currentFile} of ${totalFiles}...`
+                  : "Renaming files..."}
+              </span>
+              <span className="text-muted-foreground">{displayProgress}%</span>
             </div>
-            <Progress value={progress} data-testid="rename-progress-bar" />
+            <Progress value={displayProgress} data-testid="rename-progress-bar" />
           </div>
         </div>
       </Card>
@@ -65,9 +78,9 @@ export function RenameProgress({
     <Card
       className={cn(
         "p-4",
-        isFullSuccess && "border-green-200 bg-green-50",
-        isPartialSuccess && "border-yellow-200 bg-yellow-50",
-        isFullFailure && "border-red-200 bg-red-50"
+        isFullSuccess && "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950",
+        isPartialSuccess && "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950",
+        isFullFailure && "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950"
       )}
       data-testid="rename-result-card"
     >
@@ -89,9 +102,9 @@ export function RenameProgress({
           <h4
             className={cn(
               "font-medium",
-              isFullSuccess && "text-green-800",
-              isPartialSuccess && "text-yellow-800",
-              isFullFailure && "text-red-800"
+              isFullSuccess && "text-green-800 dark:text-green-200",
+              isPartialSuccess && "text-yellow-800 dark:text-yellow-200",
+              isFullFailure && "text-red-800 dark:text-red-200"
             )}
             data-testid="rename-result-title"
           >
