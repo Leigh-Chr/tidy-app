@@ -41,25 +41,40 @@ export interface ConditionEvaluationError {
 }
 
 // =============================================================================
-// Regex Cache for Performance
+// Regex Cache for Performance (LRU with max size)
 // =============================================================================
 
+const REGEX_CACHE_MAX_SIZE = 1000;
 const regexCache = new Map<string, RegExp>();
 
 /**
- * Compile and cache a regex pattern.
+ * Compile and cache a regex pattern using LRU eviction.
  * Returns null if the pattern is invalid.
  */
 function compileRegex(pattern: string, caseSensitive: boolean): RegExp | null {
   const cacheKey = `${pattern}:${caseSensitive}`;
 
   if (regexCache.has(cacheKey)) {
-    return regexCache.get(cacheKey)!;
+    // Move to end for LRU (delete and re-add)
+    const cached = regexCache.get(cacheKey)!;
+    regexCache.delete(cacheKey);
+    regexCache.set(cacheKey, cached);
+    return cached;
   }
 
   try {
     const flags = caseSensitive ? '' : 'i';
     const regex = new RegExp(pattern, flags);
+
+    // Evict oldest entries if at capacity
+    if (regexCache.size >= REGEX_CACHE_MAX_SIZE) {
+      // Map iterates in insertion order, so first key is oldest
+      const oldestKey = regexCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        regexCache.delete(oldestKey);
+      }
+    }
+
     regexCache.set(cacheKey, regex);
     return regex;
   } catch {
@@ -72,6 +87,13 @@ function compileRegex(pattern: string, caseSensitive: boolean): RegExp | null {
  */
 export function clearRegexCache(): void {
   regexCache.clear();
+}
+
+/**
+ * Get current regex cache size (useful for testing/monitoring).
+ */
+export function getRegexCacheSize(): number {
+  return regexCache.size;
 }
 
 // =============================================================================

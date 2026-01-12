@@ -1055,7 +1055,7 @@ export const useAppStore = create<AppState>((set) => ({
         lastAnalysisResult: emptyResult,
       });
       // Return success with a marker to indicate why nothing was analyzed
-      return { ok: true, data: { ...emptyResult, _templateSkipped: true } as BatchAnalysisResult };
+      return { ok: true, data: { ...emptyResult, _templateSkipped: true } };
     }
 
     set({ aiAnalysisStatus: "analyzing", aiAnalysisProgress: null, aiAnalysisError: null });

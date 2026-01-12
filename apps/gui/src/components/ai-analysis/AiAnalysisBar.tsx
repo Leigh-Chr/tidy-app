@@ -142,8 +142,7 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
         const { analyzed, skipped, failed, results } = result.data;
 
         // Check if this was skipped due to template not using AI
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-        if ((result.data as any)._templateSkipped) {
+        if (result.data._templateSkipped) {
           toast.info(
             "Your template uses {original} instead of {name}. Edit your template to use {name} for AI-powered naming.",
             { duration: 6000 }

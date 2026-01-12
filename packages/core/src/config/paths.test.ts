@@ -11,20 +11,20 @@ import { tmpdir } from 'node:os';
 import { resolveConfigPath, getDefaultConfigDir } from './paths.js';
 
 describe('resolveConfigPath', () => {
-  const originalEnv = process.env.TIDY_CONFIG;
+  const originalEnv = process.env['TIDY_CONFIG'];
   const testDir = join(tmpdir(), 'tidy-path-test');
 
   beforeEach(() => {
     // Clear env var before each test
-    delete process.env.TIDY_CONFIG;
+    delete process.env['TIDY_CONFIG'];
   });
 
   afterEach(() => {
     // Restore original env var
     if (originalEnv !== undefined) {
-      process.env.TIDY_CONFIG = originalEnv;
+      process.env['TIDY_CONFIG'] = originalEnv;
     } else {
-      delete process.env.TIDY_CONFIG;
+      delete process.env['TIDY_CONFIG'];
     }
   });
 
@@ -86,7 +86,7 @@ describe('resolveConfigPath', () => {
   // AC5: Environment variable
   describe('environment variable support', () => {
     it('uses environment variable when no custom path', () => {
-      process.env.TIDY_CONFIG = './env-config.json';
+      process.env['TIDY_CONFIG'] = './env-config.json';
 
       const result = resolveConfigPath({ cwd: testDir });
 
@@ -95,7 +95,7 @@ describe('resolveConfigPath', () => {
 
     it('resolves absolute env var path', () => {
       const absolutePath = '/env/path/config.json';
-      process.env.TIDY_CONFIG = absolutePath;
+      process.env['TIDY_CONFIG'] = absolutePath;
 
       const result = resolveConfigPath({ cwd: testDir });
 
@@ -103,7 +103,7 @@ describe('resolveConfigPath', () => {
     });
 
     it('custom path takes precedence over env var', () => {
-      process.env.TIDY_CONFIG = './env-config.json';
+      process.env['TIDY_CONFIG'] = './env-config.json';
 
       const result = resolveConfigPath({
         customPath: './custom-config.json',

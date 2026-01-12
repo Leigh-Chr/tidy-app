@@ -376,6 +376,7 @@ describe('AnalysisResult', () => {
         confidence: 0.5,
         reasoning: 'test',
         keywords: [],
+        keepOriginal: false,
       };
       const result = createAnalysisResult('/file.txt', suggestion, 'llama3', 500, false);
       const after = new Date().toISOString();
@@ -396,6 +397,7 @@ describe('AnalysisResult', () => {
         confidence: 0.5,
         reasoning: 'test',
         keywords: [],
+        keepOriginal: false,
       };
       const result = createAnalysisResult('/file.txt', suggestion, 'mistral', 100, false);
 
@@ -408,6 +410,7 @@ describe('AnalysisResult', () => {
         confidence: 0.9,
         reasoning: 'Image of sunset',
         keywords: ['sunset'],
+        keepOriginal: false,
       };
       const result = createAnalysisResult('/photo.jpg', suggestion, 'llava', 200, false, 'vision');
 
@@ -420,6 +423,7 @@ describe('AnalysisResult', () => {
         confidence: 0.7,
         reasoning: 'From EXIF data',
         keywords: [],
+        keepOriginal: false,
       };
       const result = createAnalysisResult('/doc.pdf', suggestion, 'n/a', 10, false, 'metadata-only');
 
@@ -432,6 +436,7 @@ describe('AnalysisResult', () => {
         confidence: 0.1,
         reasoning: 'LLM unavailable',
         keywords: [],
+        keepOriginal: false,
       };
       const result = createAnalysisResult('/file.txt', suggestion, 'n/a', 0, false, 'offline-fallback');
 

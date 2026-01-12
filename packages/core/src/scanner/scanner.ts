@@ -1,5 +1,5 @@
 import { readdir, stat } from 'node:fs/promises';
-import { join, parse, relative } from 'node:path';
+import { join, parse, relative, isAbsolute, normalize, resolve } from 'node:path';
 import type { Result } from '../types/result.js';
 import { ok, err } from '../types/result.js';
 import type { FileInfo } from '../types/file-info.js';
@@ -8,6 +8,31 @@ import {
   getMetadataCapability,
   isMetadataSupportedByRegistry,
 } from '../types/file-type-registry.js';
+
+/**
+ * Validate and normalize a path for safe scanning.
+ * Returns the normalized absolute path or an error.
+ */
+function validatePath(inputPath: string): Result<string, Error> {
+  if (!inputPath || inputPath.trim() === '') {
+    return err(new Error('Path cannot be empty'));
+  }
+
+  // Normalize the path to remove redundant separators and resolve . and ..
+  const normalizedPath = normalize(inputPath);
+
+  // Resolve to absolute path
+  const absolutePath = isAbsolute(normalizedPath)
+    ? normalizedPath
+    : resolve(normalizedPath);
+
+  // Check for null bytes (potential security issue)
+  if (absolutePath.includes('\0')) {
+    return err(new Error('Path contains invalid characters'));
+  }
+
+  return ok(absolutePath);
+}
 
 /**
  * Options for folder scanning.
@@ -124,16 +149,23 @@ export async function scanFolder(
   folderPath: string,
   options: ScanOptions = {}
 ): Promise<Result<FileInfo[]>> {
+  // Validate and normalize the input path
+  const pathValidation = validatePath(folderPath);
+  if (!pathValidation.ok) {
+    return err(pathValidation.error);
+  }
+  const validatedPath = pathValidation.data;
+
   const { recursive = false, extensions, onProgress, signal } = options;
 
   try {
     const files: FileInfo[] = [];
-    await scanDirectory(folderPath, files, {
+    await scanDirectory(validatedPath, files, {
       recursive,
       extensions,
       onProgress,
       signal,
-      basePath: folderPath,
+      basePath: validatedPath,
     });
     return ok(files);
   } catch (error) {
