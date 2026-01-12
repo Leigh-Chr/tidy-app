@@ -398,58 +398,158 @@ fn is_valid_filename(name: &str) -> bool {
 // Pattern Stripping (for idempotent template application)
 // =============================================================================
 
-/// Common date patterns to strip from filenames
-/// These patterns are matched at the start or end of the filename, with optional separators
-const DATE_PATTERNS: &[&str] = &[
-    // ISO format: YYYY-MM-DD, YYYY_MM_DD
-    r"^\d{4}[-_]\d{2}[-_]\d{2}[-_ ]?",
-    // Compact ISO: YYYYMMDD
-    r"^\d{8}[-_ ]?",
-    // European format: DD-MM-YYYY, DD_MM_YYYY
-    r"^\d{2}[-_]\d{2}[-_]\d{4}[-_ ]?",
-    // At the end: _YYYY-MM-DD, _YYYYMMDD
-    r"[-_ ]\d{4}[-_]?\d{2}[-_]?\d{2}$",
+/// Combined date+time patterns (YYYYMMDD_HHMMSS format from cameras)
+/// Process these FIRST to handle date+time as a unit
+const DATETIME_PATTERNS: &[&str] = &[
+    // YYYYMMDD_HHMMSS (compact date + compact time) - most common camera format
+    r"(?P<lead>^|[-_ .])(?P<datetime>(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])[-_.](?:[01]\d|2[0-3])(?:[0-5]\d){2})(?P<trail>[-_ .]|$)",
+    // YYYY-MM-DD_HHMMSS (separated date + compact time)
+    r"(?P<lead>^|[-_ .])(?P<datetime>(?:19|20)\d{2}[-_.](?:0[1-9]|1[0-2])[-_.](?:0[1-9]|[12]\d|3[01])[-_.](?:[01]\d|2[0-3])(?:[0-5]\d){2})(?P<trail>[-_ .]|$)",
 ];
 
-/// Counter patterns to strip from filenames
+/// Date patterns with separators (ISO, European, US formats)
+/// These match ANYWHERE in the string with proper boundary handling
+const DATE_PATTERNS_SEPARATED: &[&str] = &[
+    // YYYY-MM-DD, YYYY_MM_DD, YYYY.MM.DD (ISO-like)
+    // Year: 1900-2099, Month: 01-12, Day: 01-31
+    r"(?P<lead>^|[-_ .])(?P<date>(?:19|20)\d{2}[-_.](?:0[1-9]|1[0-2])[-_.](?:0[1-9]|[12]\d|3[01]))(?P<trail>[-_ .]|$)",
+    // DD-MM-YYYY, DD_MM_YYYY, DD.MM.YYYY (European)
+    // MM-DD-YYYY, MM_DD_YYYY, MM.DD.YYYY (US)
+    // Using 01-31 for first position (day or month) and 01-31 for second (month or day)
+    r"(?P<lead>^|[-_ .])(?P<date>(?:0[1-9]|[12]\d|3[01])[-_.](?:0[1-9]|[12]\d|3[01])[-_.](?:19|20)\d{2})(?P<trail>[-_ .]|$)",
+];
+
+/// Compact date patterns (8 digits, no separators)
+/// Only YYYYMMDD is reliable - starts with 19 or 20
+const DATE_PATTERNS_COMPACT: &[&str] = &[
+    // YYYYMMDD - most common and reliable compact format
+    // Requires boundary (separator or string edge) to avoid matching random 8-digit numbers
+    r"(?P<lead>^|[-_ .])(?P<date>(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))(?P<trail>[-_ .]|$)",
+];
+
+/// Standalone time patterns (6 digits HHMMSS)
+/// Only match when preceded by separator (typically follows a date)
+const TIME_PATTERNS: &[&str] = &[
+    // HHMMSS - Hour: 00-23, Min: 00-59, Sec: 00-59
+    r"(?P<lead>[-_ .])(?P<time>(?:[01]\d|2[0-3])(?:[0-5]\d){2})(?P<trail>[-_ .]|$)",
+];
+
+/// Counter patterns (at end of filename only)
 const COUNTER_PATTERNS: &[&str] = &[
-    // At the end: _001, _002, (1), (2), -01, -02
-    r"[-_ ]\d{1,4}$",
-    r"\(\d{1,4}\)$",
+    r"[-_ ]\d{1,4}$",        // _001, -02, _1, etc.
+    r"[ ]?\(\d{1,4}\)$",     // (1), (001), " (1)" (Windows duplicate style)
 ];
 
-/// Clean a filename by removing existing date and counter patterns
-/// This makes template application idempotent (applying the same template twice gives the same result)
+/// Apply a pattern with boundary-aware replacement.
+/// - If pattern match is in the middle (has separators on both sides), keep one separator
+/// - If pattern match is at an edge (start or end), remove entirely
+fn apply_pattern_with_boundary_handling(input: &str, pattern: &str) -> String {
+    let Ok(re) = regex_lite::Regex::new(pattern) else {
+        return input.to_string();
+    };
+
+    re.replace_all(input, |caps: &regex_lite::Captures| {
+        let lead = caps.name("lead").map_or("", |m| m.as_str());
+        let trail = caps.name("trail").map_or("", |m| m.as_str());
+
+        // If both boundaries are actual separators (middle position), preserve one
+        if !lead.is_empty() && !trail.is_empty() {
+            lead.to_string() // Preserve the leading separator style
+        } else {
+            String::new() // At start or end, remove entirely
+        }
+    })
+    .to_string()
+}
+
+/// Clean a filename by removing existing date, time, and counter patterns.
+/// This makes template application idempotent (applying the same template twice gives the same result).
+///
+/// Handles:
+/// - Dates anywhere in the filename (start, middle, end)
+/// - Multiple date formats: ISO (YYYY-MM-DD), European (DD-MM-YYYY), US (MM-DD-YYYY)
+/// - Compact dates: YYYYMMDD
+/// - Combined date+time: YYYYMMDD_HHMMSS (camera format)
+/// - Separators: `-`, `_`, `.`, ` `
+/// - Counters: _001, (1), etc.
+/// - Preserves leading dot for Unix hidden files
 fn clean_filename(name: &str) -> String {
     if name.is_empty() {
         return name.to_string();
     }
 
-    let mut result = name.to_string();
+    // Preserve leading dot for Unix hidden files (e.g., .hidden, .config)
+    let (leading_dot, work_name) = if name.starts_with('.') {
+        (".", &name[1..])
+    } else {
+        ("", name)
+    };
 
-    // Remove date patterns
-    for pattern in DATE_PATTERNS {
-        if let Ok(re) = regex_lite::Regex::new(pattern) {
-            result = re.replace(&result, "").to_string();
+    // If nothing left after removing dot, return original
+    if work_name.is_empty() {
+        return name.to_string();
+    }
+
+    let mut result = work_name.to_string();
+
+    // Iterate until no more changes (handles consecutive patterns like 20240115_20240120)
+    loop {
+        let prev = result.clone();
+
+        // Apply datetime patterns first (date + time as a unit)
+        for pattern in DATETIME_PATTERNS {
+            result = apply_pattern_with_boundary_handling(&result, pattern);
+        }
+
+        // Apply date patterns with separators
+        for pattern in DATE_PATTERNS_SEPARATED {
+            result = apply_pattern_with_boundary_handling(&result, pattern);
+        }
+
+        // Apply compact date patterns
+        for pattern in DATE_PATTERNS_COMPACT {
+            result = apply_pattern_with_boundary_handling(&result, pattern);
+        }
+
+        // Apply standalone time patterns
+        for pattern in TIME_PATTERNS {
+            result = apply_pattern_with_boundary_handling(&result, pattern);
+        }
+
+        // Clean up multiple consecutive separators
+        if let Ok(re) = regex_lite::Regex::new(r"[-_ .]{2,}") {
+            result = re.replace_all(&result, "_").to_string();
+        }
+
+        // Trim separators from edges
+        result = result
+            .trim_matches(|c: char| c == '-' || c == '_' || c == ' ' || c == '.')
+            .to_string();
+
+        if result == prev {
+            break;
         }
     }
 
-    // Remove counter patterns
+    // Counter patterns (at end only, single pass after all date/time removal)
     for pattern in COUNTER_PATTERNS {
         if let Ok(re) = regex_lite::Regex::new(pattern) {
             result = re.replace(&result, "").to_string();
         }
     }
 
-    // Clean up any remaining leading/trailing separators
-    result = result.trim_matches(|c| c == '-' || c == '_' || c == ' ').to_string();
+    // Final trim
+    result = result
+        .trim_matches(|c: char| c == '-' || c == '_' || c == ' ' || c == '.')
+        .to_string();
 
-    // If we stripped everything, return original
+    // If empty after cleaning, return original (filename was entirely date-based)
     if result.is_empty() {
         return name.to_string();
     }
 
-    result
+    // Re-add leading dot for hidden files
+    format!("{}{}", leading_dot, result)
 }
 
 /// Maximum filename length for most filesystems
@@ -1699,37 +1799,85 @@ mod tests {
     fn test_clean_filename_no_patterns() {
         assert_eq!(clean_filename("photo"), "photo");
         assert_eq!(clean_filename("my-vacation-pic"), "my-vacation-pic");
+        assert_eq!(clean_filename("document"), "document");
     }
 
     #[test]
     fn test_clean_filename_iso_date_prefix() {
+        // ISO format YYYY-MM-DD at start
         assert_eq!(clean_filename("2024-01-15_photo"), "photo");
         assert_eq!(clean_filename("2024-01-15-photo"), "photo");
         assert_eq!(clean_filename("2024_01_15_photo"), "photo");
+        assert_eq!(clean_filename("2024.01.15_photo"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_european_date_prefix() {
+        // European format DD-MM-YYYY at start
+        assert_eq!(clean_filename("15-01-2024_photo"), "photo");
+        assert_eq!(clean_filename("15_01_2024_photo"), "photo");
+        assert_eq!(clean_filename("15.01.2024_photo"), "photo");
     }
 
     #[test]
     fn test_clean_filename_compact_date_prefix() {
+        // Compact YYYYMMDD at start
         assert_eq!(clean_filename("20240115_photo"), "photo");
         assert_eq!(clean_filename("20240115-photo"), "photo");
+        assert_eq!(clean_filename("20240115.photo"), "photo");
     }
 
     #[test]
     fn test_clean_filename_date_suffix() {
+        // Dates at end
         assert_eq!(clean_filename("photo_2024-01-15"), "photo");
-        assert_eq!(clean_filename("photo-20240115"), "photo");
+        assert_eq!(clean_filename("photo-2024-01-15"), "photo");
+        assert_eq!(clean_filename("photo_20240115"), "photo");
+        assert_eq!(clean_filename("photo.2024.01.15"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_date_in_middle() {
+        // NEW: Dates in the middle of filename
+        assert_eq!(clean_filename("photo_2024-01-15_vacation"), "photo_vacation");
+        assert_eq!(clean_filename("IMG_20240115_edited"), "IMG_edited");
+        assert_eq!(clean_filename("trip_15-01-2024_memories"), "trip_memories");
+        assert_eq!(clean_filename("scan_2024.01.15_document"), "scan_document");
+    }
+
+    #[test]
+    fn test_clean_filename_multiple_dates() {
+        // Multiple dates should all be removed
+        assert_eq!(clean_filename("2024-01-15_trip_2024-01-20"), "trip");
+        assert_eq!(clean_filename("photo_20240115_20240120"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_datetime_camera_format() {
+        // Camera format: YYYYMMDD_HHMMSS
+        assert_eq!(clean_filename("IMG_20240115_103045"), "IMG");
+        assert_eq!(clean_filename("20240115_103045_photo"), "photo");
+        assert_eq!(clean_filename("photo_20240115_103045_edited"), "photo_edited");
+        // Separated date + time
+        assert_eq!(clean_filename("2024-01-15_103045_photo"), "photo");
     }
 
     #[test]
     fn test_clean_filename_counter_suffix() {
+        // Counter patterns at end
         assert_eq!(clean_filename("photo_001"), "photo");
         assert_eq!(clean_filename("photo-02"), "photo");
         assert_eq!(clean_filename("photo(3)"), "photo");
+        assert_eq!(clean_filename("photo (1)"), "photo");  // Windows style
+        assert_eq!(clean_filename("document_0001"), "document");
     }
 
     #[test]
-    fn test_clean_filename_multiple_patterns() {
+    fn test_clean_filename_date_and_counter() {
+        // Combined date + counter
         assert_eq!(clean_filename("2024-01-15_photo_001"), "photo");
+        assert_eq!(clean_filename("photo_2024-01-15_001"), "photo");
+        assert_eq!(clean_filename("IMG_20240115_103045_001"), "IMG");
     }
 
     #[test]
@@ -1737,13 +1885,50 @@ mod tests {
         // Numbers that aren't dates should be preserved
         assert_eq!(clean_filename("photo123"), "photo123");
         assert_eq!(clean_filename("vacation2024"), "vacation2024");
+        assert_eq!(clean_filename("room101"), "room101");
+        assert_eq!(clean_filename("v2_final"), "v2_final");
+        // Year alone (4 digits) should NOT be treated as date
+        assert_eq!(clean_filename("report_2024_annual"), "report_2024_annual");
+    }
+
+    #[test]
+    fn test_clean_filename_invalid_dates_preserved() {
+        // Invalid month (13) or day (32) should not match
+        assert_eq!(clean_filename("2024-13-01_photo"), "2024-13-01_photo");
+        assert_eq!(clean_filename("2024-01-32_photo"), "2024-01-32_photo");
+        // Invalid year (not 19xx or 20xx)
+        assert_eq!(clean_filename("1899-01-15_photo"), "1899-01-15_photo");
+        assert_eq!(clean_filename("2100-01-15_photo"), "2100-01-15_photo");
     }
 
     #[test]
     fn test_clean_filename_empty_result_returns_original() {
         // If cleaning would result in empty string, return original
         assert_eq!(clean_filename("2024-01-15"), "2024-01-15");
+        assert_eq!(clean_filename("20240115"), "20240115");
         assert_eq!(clean_filename("001"), "001");
+        assert_eq!(clean_filename("20240115_103045"), "20240115_103045");
+    }
+
+    #[test]
+    fn test_clean_filename_hidden_files() {
+        // Hidden files (Unix style) should preserve the leading dot
+        assert_eq!(clean_filename(".hidden_2024-01-15"), ".hidden");
+        assert_eq!(clean_filename(".config_20240115"), ".config");
+    }
+
+    #[test]
+    fn test_clean_filename_mixed_separators() {
+        // Mixed separators in date should still work
+        assert_eq!(clean_filename("2024-01_15_photo"), "photo");
+        assert_eq!(clean_filename("photo_2024.01-15"), "photo");
+    }
+
+    #[test]
+    fn test_clean_filename_separator_cleanup() {
+        // Multiple consecutive separators should be collapsed
+        assert_eq!(clean_filename("photo__vacation"), "photo_vacation");
+        assert_eq!(clean_filename("photo---trip"), "photo_trip");
     }
 
     #[tokio::test]
