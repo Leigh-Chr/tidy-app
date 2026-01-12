@@ -599,6 +599,14 @@ pub async fn get_config() -> Result<AppConfig, ConfigError> {
         config.folder_structures = default_folder_structures();
     }
 
+    // Migration: update templates using {original} to use {name} for AI compatibility
+    // {name} uses AI suggestion if available, otherwise falls back to original filename
+    for template in &mut config.templates {
+        if template.pattern.contains("{original}") {
+            template.pattern = template.pattern.replace("{original}", "{name}");
+        }
+    }
+
     Ok(config)
 }
 
