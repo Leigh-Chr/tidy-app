@@ -59,7 +59,7 @@ export type AiAnalysisStatus = "idle" | "analyzing" | "done" | "error";
  * - {ai}: Only uses AI suggestion (empty if not available)
  */
 const AI_PLACEHOLDERS = ["name", "ai"];
-function templateNeedsAi(templatePattern: string): boolean {
+export function templateNeedsAi(templatePattern: string): boolean {
   const placeholderRegex = /\{([^}]+)\}/g;
   let match;
   while ((match = placeholderRegex.exec(templatePattern)) !== null) {
@@ -1000,16 +1000,26 @@ export const useAppStore = create<AppState>((set) => ({
     }
 
     // Check if current template uses AI placeholders ({name} or {ai})
-    // If not, skip AI analysis to save resources
+    // If not, skip AI analysis to save resources but don't show an error
     const defaultTemplate = config.templates?.find((t) => t.isDefault);
     const currentTemplatePattern = preview?.templateUsed ?? defaultTemplate?.pattern;
     if (currentTemplatePattern && !templateNeedsAi(currentTemplatePattern)) {
-      const error = new Error(
-        "Current template does not use AI placeholders ({name} or {ai}). " +
-        "Use {name} for smart naming or {ai} for AI-only names."
-      );
-      set({ aiAnalysisError: error.message, aiAnalysisStatus: "idle" });
-      return { ok: false, error };
+      // Return an empty result without error - the UI will handle showing appropriate info
+      const emptyResult: BatchAnalysisResult = {
+        results: [],
+        total: 0,
+        analyzed: 0,
+        failed: 0,
+        skipped: files.length,
+        llmAvailable: true,
+      };
+      set({
+        aiAnalysisStatus: "idle",
+        aiAnalysisError: null,
+        lastAnalysisResult: emptyResult,
+      });
+      // Return success with a marker to indicate why nothing was analyzed
+      return { ok: true, data: { ...emptyResult, _templateSkipped: true } as BatchAnalysisResult };
     }
 
     set({ aiAnalysisStatus: "analyzing", aiAnalysisError: null });
