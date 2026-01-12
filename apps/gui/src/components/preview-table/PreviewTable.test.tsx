@@ -20,6 +20,7 @@ const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview =>
       status: "ready",
       issues: [],
       metadataSources: ["filename"],
+      actionType: "rename",
     },
     {
       id: "2",
@@ -30,6 +31,7 @@ const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview =>
       status: "ready",
       issues: [],
       metadataSources: ["EXIF"],
+      actionType: "rename",
     },
     {
       id: "3",
@@ -40,6 +42,7 @@ const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview =>
       status: "no-change",
       issues: [],
       metadataSources: [],
+      actionType: "no-change",
     },
     {
       id: "4",
@@ -50,6 +53,7 @@ const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview =>
       status: "conflict",
       issues: [{ code: "CONFLICT", message: "File already exists" }],
       metadataSources: [],
+      actionType: "conflict",
     },
   ],
   summary: {
@@ -60,6 +64,14 @@ const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview =>
     noChange: 1,
     invalidName: 0,
   },
+  actionSummary: {
+    renameCount: 2,
+    moveCount: 0,
+    noChangeCount: 1,
+    conflictCount: 1,
+    errorCount: 0,
+  },
+  reorganizationMode: "rename-only",
   generatedAt: "2026-01-10T12:00:00Z",
   templateUsed: "{date}_{name}.{ext}",
   ...overrides,

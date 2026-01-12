@@ -18,6 +18,7 @@ const createMockProposal = (overrides?: Partial<RenameProposal>): RenameProposal
   status: "ready",
   issues: [],
   metadataSources: ["filename"],
+  actionType: "rename",
   ...overrides,
 });
 

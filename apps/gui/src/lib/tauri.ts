@@ -81,6 +81,23 @@ export interface ScanResult {
 /** Output format options */
 export type OutputFormat = "table" | "json" | "plain";
 
+/**
+ * Case normalization style for filenames.
+ *
+ * Controls how filenames are normalized for consistency.
+ * Default: 'kebab-case' (modern, URL-friendly, widely compatible)
+ */
+export type CaseStyle =
+  | "none"        // No transformation - keep original casing
+  | "lowercase"   // all lowercase
+  | "uppercase"   // ALL UPPERCASE
+  | "capitalize"  // First letter uppercase
+  | "title-case"  // Each Word Capitalized
+  | "kebab-case"  // words-separated-by-hyphens (RECOMMENDED)
+  | "snake_case"  // words_separated_by_underscores
+  | "camelCase"   // wordsJoinedWithCamelCase
+  | "PascalCase"; // WordsJoinedWithPascalCase
+
 /** Template for renaming files */
 export interface Template {
   /** Unique identifier (UUID) */
@@ -109,6 +126,8 @@ export interface Preferences {
   confirmBeforeApply: boolean;
   /** Whether to scan subdirectories */
   recursiveScan: boolean;
+  /** Case normalization style for filenames (default: kebab-case) */
+  caseNormalization: CaseStyle;
 }
 
 // =============================================================================
@@ -374,6 +393,94 @@ export async function resetConfig(): Promise<AppConfig> {
 }
 
 // =============================================================================
+// Reorganization Types
+// =============================================================================
+
+/**
+ * Reorganization mode determines how files are handled during rename operations.
+ *
+ * - 'rename-only': Files stay in their current locations, only names change (safest)
+ * - 'organize': Files are moved to new locations based on folder patterns and destination
+ */
+export type ReorganizationMode = "rename-only" | "organize";
+
+/**
+ * Options for the "organize" mode.
+ * Only used when reorganizationMode is 'organize'.
+ */
+export interface OrganizeOptions {
+  /** Base destination directory for organized files. If not provided, uses the scanned folder as base. */
+  destinationDirectory?: string;
+  /** Folder pattern for organizing files (e.g., "{year}/{month}"). Applied relative to destinationDirectory. */
+  folderPattern: string;
+  /**
+   * Whether to preserve the relative context from subfolders.
+   * When true: /Photos/Vacation/img.jpg → /destination/Vacation/{year}/{month}/img.jpg
+   * When false: /Photos/Vacation/img.jpg → /destination/{year}/{month}/img.jpg
+   * Default: false
+   */
+  preserveContext?: boolean;
+  /**
+   * How many levels of parent folders to preserve when preserveContext is true.
+   * 0 = preserve none (same as preserveContext: false)
+   * 1 = preserve immediate parent folder
+   * -1 = preserve all parent folders (from scan root)
+   * Default: 1
+   */
+  contextDepth?: number;
+}
+
+/**
+ * Action type for a file in the preview.
+ * Used to clearly communicate what will happen to each file.
+ */
+export type FileActionType =
+  | "rename"     // File will only be renamed (stays in same folder)
+  | "move"       // File will be moved to a different folder (may also be renamed)
+  | "no-change"  // File will not change (name and location stay the same)
+  | "conflict"   // File has a conflict and cannot be processed
+  | "error";     // File has an error (invalid name, missing data, etc.)
+
+/**
+ * Conflict information for a file.
+ */
+export interface FileConflict {
+  /** The type of conflict */
+  type: "duplicate-name" | "file-exists" | "cross-conflict";
+  /** Human-readable description */
+  message: string;
+  /** ID of the conflicting file (for duplicate-name conflicts) */
+  conflictingFileId?: string;
+  /** Path of the existing file (for file-exists conflicts) */
+  existingFilePath?: string;
+}
+
+/**
+ * Summary of preview actions by type.
+ */
+export interface PreviewActionSummary {
+  /** Number of files that will only be renamed */
+  renameCount: number;
+  /** Number of files that will be moved */
+  moveCount: number;
+  /** Number of files with no changes */
+  noChangeCount: number;
+  /** Number of files with conflicts */
+  conflictCount: number;
+  /** Number of files with errors */
+  errorCount: number;
+}
+
+/**
+ * Conflict resolution strategy.
+ */
+export type ConflictResolution =
+  | "add-suffix"  // Add a numeric suffix (photo.jpg → photo-2.jpg)
+  | "add-source"  // Add source folder name (photo.jpg → photo-from-vacation.jpg)
+  | "skip"        // Skip the conflicting file
+  | "ask";        // Ask user for each conflict (UI will prompt)
+
+// =============================================================================
 // Rename Types (Story 6.4)
 // =============================================================================
 
@@ -419,6 +526,10 @@ export interface RenameProposal {
   destinationFolder?: string;
   /** AI-generated suggestion for this file (if LLM analysis was performed) */
   aiSuggestion?: AiSuggestion;
+  /** Action type for this file (rename, move, no-change, conflict, error) */
+  actionType: FileActionType;
+  /** Conflict details (if actionType is 'conflict') */
+  conflict?: FileConflict;
 }
 
 /** Summary statistics for a rename preview */
@@ -441,16 +552,30 @@ export interface RenamePreview {
   generatedAt: string;
   /** Template pattern used */
   templateUsed: string;
+  /** Action summary by type (rename, move, no-change, conflict, error) */
+  actionSummary: PreviewActionSummary;
+  /** Reorganization mode used for this preview */
+  reorganizationMode: ReorganizationMode;
 }
 
 /** Options for generating a preview */
 export interface GeneratePreviewOptions {
   /** Custom date format (default: YYYY-MM-DD) */
   dateFormat?: string;
-  /** Folder structure pattern for organizing files (e.g., "{year}/{month}") */
+  /**
+   * @deprecated Use reorganizationMode and organizeOptions instead.
+   * Folder structure pattern for organizing files (e.g., "{year}/{month}")
+   */
   folderPattern?: string;
-  /** Base directory for folder organization (destination root) */
+  /**
+   * @deprecated Use reorganizationMode and organizeOptions instead.
+   * Base directory for folder organization (destination root)
+   */
   baseDirectory?: string;
+  /** Reorganization mode (default: 'rename-only') */
+  reorganizationMode?: ReorganizationMode;
+  /** Options for organize mode (required when reorganizationMode is 'organize') */
+  organizeOptions?: OrganizeOptions;
 }
 
 /** Outcome of a single file rename */

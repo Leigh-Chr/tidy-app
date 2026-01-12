@@ -17,6 +17,7 @@ const defaultPreferences: Preferences = {
   colorOutput: true,
   confirmBeforeApply: true,
   recursiveScan: false,
+  caseNormalization: "kebab-case",
 };
 
 const mockConfig: AppConfig = {

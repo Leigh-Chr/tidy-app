@@ -58,6 +58,7 @@ const mockPreview: RenamePreview = {
       proposedPath: "/test/2026-01-01_image1.jpg",
       status: "ready",
       issues: [],
+      actionType: "rename",
     },
   ],
   summary: {
@@ -68,6 +69,14 @@ const mockPreview: RenamePreview = {
     noChange: 0,
     invalidName: 0,
   },
+  actionSummary: {
+    renameCount: 1,
+    moveCount: 0,
+    noChangeCount: 0,
+    conflictCount: 0,
+    errorCount: 0,
+  },
+  reorganizationMode: "rename-only",
   generatedAt: "2026-01-01T12:00:00Z",
   templateUsed: "{date}_{name}.{ext}",
 };

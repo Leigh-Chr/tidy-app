@@ -25,6 +25,7 @@ const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview =>
       proposedPath: "/folder/2026-01-01_photo.jpg",
       status: "ready",
       issues: [],
+      actionType: "rename",
     },
     {
       id: "2",
@@ -34,6 +35,7 @@ const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview =>
       proposedPath: "/folder/2026-01-02_document.pdf",
       status: "ready",
       issues: [],
+      actionType: "rename",
     },
   ],
   summary: {
@@ -44,6 +46,14 @@ const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview =>
     noChange: 0,
     invalidName: 0,
   },
+  actionSummary: {
+    renameCount: 2,
+    moveCount: 0,
+    noChangeCount: 0,
+    conflictCount: 0,
+    errorCount: 0,
+  },
+  reorganizationMode: "rename-only",
   generatedAt: "2026-01-01T00:00:00Z",
   templateUsed: "date-prefix",
   ...overrides,
@@ -75,6 +85,7 @@ const createMockConfig = (): AppConfig => ({
     colorOutput: true,
     confirmBeforeApply: true,
     recursiveScan: false,
+    caseNormalization: "kebab-case",
   },
   recentFolders: [],
   ollama: {
@@ -151,6 +162,7 @@ describe("PreviewPanel", () => {
     config: null as AppConfig | null,
     loadConfig: vi.fn(),
     scanResult: null as ScanResult | null,
+    selectedFolder: null as string | null,
     preview: null as RenamePreview | null,
     previewStatus: "idle" as PreviewStatus,
     previewError: null as string | null,
@@ -165,6 +177,12 @@ describe("PreviewPanel", () => {
     aiSuggestions: new Map(),
     getFilteredFiles: vi.fn((): FileInfo[] => []),
     scanOptions: { recursive: false, fileTypes: [] },
+    selectedFolderStructureId: null as string | null,
+    setSelectedFolderStructure: vi.fn(),
+    reorganizationMode: "rename-only" as const,
+    organizeOptions: null,
+    setReorganizationMode: vi.fn(),
+    setOrganizeOptions: vi.fn(),
   };
 
   beforeEach(() => {

@@ -2,19 +2,24 @@
  * Action Bar Component
  *
  * Displays selection status, safety messaging, and apply actions.
+ * Enhanced with action summary showing rename vs move counts.
  *
  * Story 6.4 - AC3: File Selection, AC5: Apply Rename, AC6: Nothing Has Changed Messaging
  */
 
-import { AlertCircle, CheckCheck } from "lucide-react";
+import { AlertCircle, CheckCheck, FileType, FolderTree } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { PreviewSummary } from "@/lib/tauri";
+import type { PreviewSummary, PreviewActionSummary, ReorganizationMode } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 export interface ActionBarProps {
   /** Summary statistics for the preview */
   summary: PreviewSummary;
+  /** Action summary (rename vs move counts) */
+  actionSummary?: PreviewActionSummary;
+  /** Current reorganization mode */
+  reorganizationMode?: ReorganizationMode;
   /** Number of files currently selected */
   selectedCount: number;
   /** Whether any changes have been applied */
@@ -31,6 +36,8 @@ export interface ActionBarProps {
 
 export function ActionBar({
   summary,
+  actionSummary,
+  reorganizationMode = "rename-only",
   selectedCount,
   hasApplied,
   isApplying,
@@ -40,6 +47,8 @@ export function ActionBar({
 }: ActionBarProps) {
   const hasSelection = selectedCount > 0;
   const allReadySelected = selectedCount === summary.ready && summary.ready > 0;
+  const isOrganizeMode = reorganizationMode === "organize";
+  const hasMoves = actionSummary && actionSummary.moveCount > 0;
 
   return (
     <Card className="p-4" data-testid="action-bar">
@@ -132,6 +141,25 @@ export function ActionBar({
         className="mt-3 pt-3 border-t flex flex-wrap gap-4 text-xs text-muted-foreground"
         data-testid="action-bar-summary"
       >
+        {/* Action Type Stats (when in organize mode or when there are moves) */}
+        {actionSummary && (hasMoves || isOrganizeMode) && (
+          <>
+            {actionSummary.renameCount > 0 && (
+              <span className="flex items-center gap-1" data-testid="action-bar-renames">
+                <FileType className="h-3 w-3 text-blue-500" />
+                {actionSummary.renameCount} rename{actionSummary.renameCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            {actionSummary.moveCount > 0 && (
+              <span className="flex items-center gap-1 text-amber-600" data-testid="action-bar-moves">
+                <FolderTree className="h-3 w-3" />
+                {actionSummary.moveCount} move{actionSummary.moveCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            <span className="text-muted-foreground/50">|</span>
+          </>
+        )}
+
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-green-500" />
           {summary.ready} ready
