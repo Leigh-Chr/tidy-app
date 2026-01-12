@@ -24,15 +24,15 @@ describe('default configuration', () => {
       expect(defaultTemplate).toBeDefined();
     });
 
-    it('default template has {date}-{original} pattern', () => {
+    it('default template has {date}-{name} pattern', () => {
       const defaultTemplate = DEFAULT_TEMPLATES.find((t) => t.isDefault);
-      expect(defaultTemplate?.pattern).toBe('{date}-{original}');
+      expect(defaultTemplate?.pattern).toBe('{date}-{name}');
     });
 
     it('has Date Prefix template', () => {
       const template = DEFAULT_TEMPLATES.find((t) => t.name === 'Date Prefix');
       expect(template).toBeDefined();
-      expect(template?.pattern).toBe('{date}-{original}');
+      expect(template?.pattern).toBe('{date}-{name}');
     });
 
     it('has Year/Month Folders template', () => {
@@ -40,7 +40,7 @@ describe('default configuration', () => {
         (t) => t.name === 'Year/Month Folders'
       );
       expect(template).toBeDefined();
-      expect(template?.pattern).toBe('{year}/{month}/{original}');
+      expect(template?.pattern).toBe('{year}/{month}/{name}');
     });
 
     it('has Camera + Date template', () => {
@@ -48,7 +48,7 @@ describe('default configuration', () => {
         (t) => t.name === 'Camera + Date'
       );
       expect(template).toBeDefined();
-      expect(template?.pattern).toBe('{camera}-{date}-{original}');
+      expect(template?.pattern).toBe('{camera}-{date}-{name}');
     });
 
     it('has Document Date template', () => {
@@ -56,7 +56,7 @@ describe('default configuration', () => {
         (t) => t.name === 'Document Date'
       );
       expect(template).toBeDefined();
-      expect(template?.pattern).toBe('{date}-{original}');
+      expect(template?.pattern).toBe('{date}-{name}');
       expect(template?.fileTypes).toContain('pdf');
     });
   });

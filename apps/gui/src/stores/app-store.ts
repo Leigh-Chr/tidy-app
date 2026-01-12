@@ -48,6 +48,27 @@ export type PreviewStatus = "idle" | "generating" | "ready" | "applying" | "erro
 export type LlmStatus = "idle" | "checking" | "available" | "unavailable";
 export type AiAnalysisStatus = "idle" | "analyzing" | "done" | "error";
 
+/**
+ * Check if a template pattern uses AI-related placeholders.
+ * Returns true if the template contains {name} or {ai}, meaning AI analysis would be useful.
+ *
+ * - {name}: Uses AI suggestion if available, otherwise original filename (recommended)
+ * - {original}: Always uses original filename (ignores AI)
+ * - {ai}: Only uses AI suggestion (empty if not available)
+ */
+const AI_PLACEHOLDERS = ["name", "ai"];
+function templateNeedsAi(templatePattern: string): boolean {
+  const placeholderRegex = /\{([^}]+)\}/g;
+  let match;
+  while ((match = placeholderRegex.exec(templatePattern)) !== null) {
+    const placeholderName = match[1].toLowerCase();
+    if (AI_PLACEHOLDERS.includes(placeholderName)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Re-export types for consumers that import from the store
 export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult };
 
@@ -512,17 +533,41 @@ export const useAppStore = create<AppState>((set) => ({
         },
       });
 
-      // Apply AI suggestions to proposals if available
+      // Apply AI suggestions to proposals if available and template uses AI placeholders
+      // Only process when template contains {name} or {ai}:
+      // - {name}: Uses AI suggestion if available, otherwise original (replaced here)
+      // - {original}: Always uses original filename (not modified)
+      // - {ai}: Only AI suggestion (handled here if backend returned empty)
       const { aiSuggestions } = useAppStore.getState();
-      if (aiSuggestions.size > 0) {
+      const needsAiProcessing = templateNeedsAi(templatePattern);
+      if (aiSuggestions.size > 0 && needsAiProcessing) {
         preview.proposals = preview.proposals.map((proposal) => {
           const suggestion = aiSuggestions.get(proposal.originalPath);
           if (suggestion) {
-            // Get the file extension from the original name
+            // Get the original filename without extension
+            const originalNameWithoutExt = proposal.originalName.includes(".")
+              ? proposal.originalName.substring(0, proposal.originalName.lastIndexOf("."))
+              : proposal.originalName;
+
+            // Get the extension
             const ext = proposal.originalName.includes(".")
-              ? "." + proposal.originalName.split(".").pop()
+              ? proposal.originalName.substring(proposal.originalName.lastIndexOf("."))
               : "";
-            const newName = suggestion.suggestedName + ext;
+
+            // Replace the original filename part in the proposed name with AI suggestion
+            // This preserves date prefixes and other template parts
+            let newName: string;
+            const proposedNameWithoutExt = proposal.proposedName.includes(".")
+              ? proposal.proposedName.substring(0, proposal.proposedName.lastIndexOf("."))
+              : proposal.proposedName;
+
+            if (proposedNameWithoutExt.includes(originalNameWithoutExt)) {
+              // Replace original filename with AI suggestion, keeping template structure
+              newName = proposal.proposedName.replace(originalNameWithoutExt, suggestion.suggestedName);
+            } else {
+              // Fallback: template didn't use {original}, just use AI suggestion + extension
+              newName = suggestion.suggestedName + ext;
+            }
 
             // Determine the base directory for the file
             const originalDir = proposal.originalPath.substring(
@@ -875,7 +920,7 @@ export const useAppStore = create<AppState>((set) => ({
   // ==========================================================================
 
   analyzeFilesWithAi: async (files: FileInfo[]): Promise<Result<BatchAnalysisResult>> => {
-    const { config } = useAppStore.getState();
+    const { config, preview } = useAppStore.getState();
     if (!config) {
       const error = new Error("Config not loaded");
       set({ aiAnalysisError: error.message, aiAnalysisStatus: "error" });
@@ -885,6 +930,19 @@ export const useAppStore = create<AppState>((set) => ({
     if (!config.ollama.enabled) {
       const error = new Error("AI analysis is disabled");
       set({ aiAnalysisError: error.message, aiAnalysisStatus: "error" });
+      return { ok: false, error };
+    }
+
+    // Check if current template uses AI placeholders ({name} or {ai})
+    // If not, skip AI analysis to save resources
+    const defaultTemplate = config.templates?.find((t) => t.isDefault);
+    const currentTemplatePattern = preview?.templateUsed ?? defaultTemplate?.pattern;
+    if (currentTemplatePattern && !templateNeedsAi(currentTemplatePattern)) {
+      const error = new Error(
+        "Current template does not use AI placeholders ({name} or {ai}). " +
+        "Use {name} for smart naming or {ai} for AI-only names."
+      );
+      set({ aiAnalysisError: error.message, aiAnalysisStatus: "idle" });
       return { ok: false, error };
     }
 

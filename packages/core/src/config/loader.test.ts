@@ -13,7 +13,7 @@ import { mkdir, writeFile, rm, readFile, stat, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadConfig, saveConfig, getConfigPath, configExists } from './loader.js';
-import { DEFAULT_CONFIG, type AppConfig } from './schema.js';
+import { DEFAULT_CONFIG, DEFAULT_CASE_STYLE, type AppConfig } from './schema.js';
 
 describe('config loader', () => {
   let testDir: string;
@@ -106,6 +106,7 @@ describe('config loader', () => {
           confirmBeforeApply: false,
           recursiveScan: true,
           rulePriorityMode: 'metadata-first',
+          caseNormalization: DEFAULT_CASE_STYLE,
         },
         recentFolders: ['/test/folder1', '/test/folder2'],
         rules: [],
@@ -524,6 +525,7 @@ describe('config loader', () => {
           confirmBeforeApply: false,
           recursiveScan: true,
           rulePriorityMode: 'combined',
+          caseNormalization: DEFAULT_CASE_STYLE,
         },
       };
 

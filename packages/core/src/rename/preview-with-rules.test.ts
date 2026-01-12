@@ -22,7 +22,7 @@ import { MetadataCapability } from '../types/metadata-capability.js';
 const createFileInfo = (overrides: Partial<FileInfo> = {}): FileInfo => ({
   path: '/test/IMG_1234.jpg',
   name: 'IMG_1234',
-  extension: '.jpg',
+  extension: 'jpg', // Extension without leading dot per FileInfo schema
   fullName: 'IMG_1234.jpg',
   size: 1024,
   createdAt: new Date('2026-01-01'),
@@ -166,6 +166,7 @@ describe('generatePreviewWithRules', () => {
         filenameRules: [],
         templates,
         defaultTemplateId: 'default-t',
+        caseNormalization: 'none',
       };
 
       const result = generatePreviewWithRules([file], metadataMap, options);
@@ -203,6 +204,7 @@ describe('generatePreviewWithRules', () => {
         filenameRules,
         templates,
         defaultTemplateId: 'default-t',
+        caseNormalization: 'none',
       };
 
       const result = generatePreviewWithRules([file], metadataMap, options);
@@ -244,6 +246,7 @@ describe('generatePreviewWithRules', () => {
         filenameRules: [],
         templates,
         defaultTemplateId: 'default-t',
+        caseNormalization: 'none',
       };
 
       const result = generatePreviewWithRules([file], metadataMap, options);
@@ -348,6 +351,7 @@ describe('generatePreviewWithRules', () => {
         filenameRules: [],
         templates,
         defaultTemplateId: 'default-t',
+        caseNormalization: 'none',
       };
 
       const result = generatePreviewWithRules([file], metadataMap, options);
@@ -374,7 +378,7 @@ describe('generatePreviewWithRules', () => {
       const pdfFile = createFileInfo({
         path: '/test/report.pdf',
         name: 'report',
-        extension: '.pdf',
+        extension: 'pdf',
         fullName: 'report.pdf',
         category: FileCategory.DOCUMENT,
       });
@@ -406,6 +410,7 @@ describe('generatePreviewWithRules', () => {
         filenameRules,
         templates,
         defaultTemplateId: 'default-t',
+        caseNormalization: 'none',
       };
 
       const result = generatePreviewWithRules([imgFile, pdfFile], metadataMap, options);
@@ -675,7 +680,7 @@ describe('generatePreviewWithRules', () => {
       const file = createFileInfo({
         path: '/source/DOC_1234.docx',
         name: 'DOC_1234',
-        extension: '.docx',
+        extension: 'docx',
         fullName: 'DOC_1234.docx',
         category: FileCategory.DOCUMENT,
       });
@@ -969,14 +974,15 @@ describe('generatePreviewWithRules', () => {
   // =============================================================================
 
   describe('LLM suggestion integration (Story 10.3)', () => {
-    const templates = [createTemplate('default-t', 'Default', '{file.name}')];
+    // Use {name} placeholder which uses AI suggestion if available, otherwise original filename
+    const templates = [createTemplate('default-t', 'Default', '{name}')];
     const metadataMap = new Map<string, UnifiedMetadata>();
 
     it('uses LLM suggestion when confidence meets threshold', () => {
       const file = createFileInfo({
         path: '/docs/document.txt',
         name: 'document',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'document.txt',
       });
       const files = [file];
@@ -1028,7 +1034,7 @@ describe('generatePreviewWithRules', () => {
       const file = createFileInfo({
         path: '/docs/document.txt',
         name: 'document',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'document.txt',
       });
       const files = [file];
@@ -1082,7 +1088,7 @@ describe('generatePreviewWithRules', () => {
       const file = createFileInfo({
         path: '/docs/document.txt',
         name: 'document',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'document.txt',
       });
       const files = [file];
@@ -1131,13 +1137,13 @@ describe('generatePreviewWithRules', () => {
       const file1 = createFileInfo({
         path: '/docs/with-llm.txt',
         name: 'with-llm',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'with-llm.txt',
       });
       const file2 = createFileInfo({
         path: '/docs/without-llm.txt',
         name: 'without-llm',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'without-llm.txt',
       });
       const files = [file1, file2];
@@ -1194,7 +1200,7 @@ describe('generatePreviewWithRules', () => {
       const file = createFileInfo({
         path: '/docs/document.txt',
         name: 'document',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'document.txt',
       });
       const files = [file];
@@ -1242,7 +1248,7 @@ describe('generatePreviewWithRules', () => {
       const file = createFileInfo({
         path: '/docs/document.txt',
         name: 'document',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'document.txt',
       });
       const files = [file];
@@ -1289,7 +1295,7 @@ describe('generatePreviewWithRules', () => {
       const file = createFileInfo({
         path: '/docs/failed-analysis.txt',
         name: 'failed-analysis',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'failed-analysis.txt',
       });
       const files = [file];
@@ -1327,13 +1333,13 @@ describe('generatePreviewWithRules', () => {
       const file1 = createFileInfo({
         path: '/docs/file1.txt',
         name: 'file1',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'file1.txt',
       });
       const file2 = createFileInfo({
         path: '/docs/file2.txt',
         name: 'file2',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'file2.txt',
       });
       const files = [file1, file2];
@@ -1382,7 +1388,7 @@ describe('generatePreviewWithRules', () => {
       const file = createFileInfo({
         path: '/docs/low-conf.txt',
         name: 'low-conf',
-        extension: '.txt',
+        extension: 'txt',
         fullName: 'low-conf.txt',
       });
       const files = [file];

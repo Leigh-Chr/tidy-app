@@ -3,6 +3,7 @@ import type { FileInfo } from './file-info.js';
 import type { ImageMetadata } from './image-metadata.js';
 import type { PDFMetadata } from './pdf-metadata.js';
 import type { OfficeMetadata } from './office-metadata.js';
+import type { CaseStyle } from '../templates/utils/case-normalizer.js';
 
 /**
  * Supported placeholder categories
@@ -31,9 +32,11 @@ export const PLACEHOLDER_TYPES = [
   'camera',
   'location',
   // File placeholders
+  'name',    // Smart name: AI if available, otherwise original (recommended)
   'ext',
-  'original',
+  'original', // Always original filename (ignores AI)
   'size',
+  'ai',       // Only AI suggestion (empty if no AI)
 ] as const;
 
 export type PlaceholderType = (typeof PLACEHOLDER_TYPES)[number];
@@ -84,7 +87,8 @@ export type PlaceholderSource =
   | 'exif'
   | 'document'
   | 'filesystem'
-  | 'literal';
+  | 'literal'
+  | 'ai';
 
 /**
  * Result of resolving a single placeholder
@@ -96,6 +100,18 @@ export interface ResolvedPlaceholder {
 }
 
 /**
+ * AI suggestion for filename (Story 10.3)
+ */
+export interface AiSuggestion {
+  /** Suggested filename (without extension) */
+  suggestedName: string;
+  /** Confidence score (0-1) */
+  confidence: number;
+  /** Optional reasoning from the AI */
+  reasoning?: string;
+}
+
+/**
  * Context containing all data available for placeholder resolution
  */
 export interface PlaceholderContext {
@@ -103,6 +119,15 @@ export interface PlaceholderContext {
   imageMetadata?: ImageMetadata | null;
   pdfMetadata?: PDFMetadata | null;
   officeMetadata?: OfficeMetadata | null;
+  /** AI suggestion for {name} and {ai} placeholders */
+  aiSuggestion?: AiSuggestion | null;
+  /**
+   * The template pattern being used.
+   * Used by smart placeholders like {name} to avoid duplicating patterns
+   * that the template would add (e.g., stripping existing date prefix
+   * if template starts with {date}).
+   */
+  templatePattern?: string;
 }
 
 /**
@@ -271,14 +296,15 @@ export type ValidationResult = z.infer<typeof validationResultSchema>;
 // =============================================================================
 
 /**
- * Extended source type for preview tracking (includes 'fallback')
+ * Extended source type for preview tracking (includes 'fallback' and 'ai')
  */
 export type PreviewPlaceholderSource =
   | 'exif'
   | 'document'
   | 'filesystem'
   | 'fallback'
-  | 'literal';
+  | 'literal'
+  | 'ai';
 
 /**
  * Resolution details for a single placeholder in preview
@@ -286,7 +312,7 @@ export type PreviewPlaceholderSource =
 export const placeholderResolutionSchema = z.object({
   placeholder: z.string(),
   value: z.string(),
-  source: z.enum(['exif', 'document', 'filesystem', 'fallback', 'literal']),
+  source: z.enum(['exif', 'document', 'filesystem', 'fallback', 'literal', 'ai']),
   isEmpty: z.boolean(),
   usedFallback: z.boolean(),
 });
@@ -336,4 +362,23 @@ export interface PreviewOptions {
   sanitizeFilenames?: boolean;
   /** Whether to include extension in result (default: true) */
   includeExtension?: boolean;
+  /**
+   * Case normalization style for filenames.
+   * Applied after template resolution and sanitization.
+   * Extensions are always lowercased regardless of this setting.
+   *
+   * Options: 'none' | 'lowercase' | 'uppercase' | 'capitalize' |
+   *          'title-case' | 'kebab-case' | 'snake_case' | 'camelCase' | 'PascalCase'
+   *
+   * Default: 'kebab-case' (recommended for maximum compatibility)
+   */
+  caseNormalization?: CaseStyle;
+  /**
+   * AI suggestion for filename.
+   * When provided, used by {name} and {ai} placeholders:
+   * - {name}: Uses AI suggestion if available, otherwise original filename
+   * - {ai}: Uses AI suggestion only (empty if not available)
+   * - {original}: Always uses original filename (ignores AI)
+   */
+  aiSuggestion?: AiSuggestion | null;
 }
