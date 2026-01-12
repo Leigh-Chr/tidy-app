@@ -5,8 +5,9 @@
  * Allows users to analyze files with AI to get naming suggestions.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
+import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, templateNeedsAi } from "@/stores/app-store";
 import type { FileInfo } from "@/lib/tauri";
 
 interface AiAnalysisBarProps {
@@ -27,6 +28,7 @@ interface AiAnalysisBarProps {
 export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
   const {
     config,
+    preview,
     aiAnalysisStatus,
     aiSuggestions,
     lastAnalysisResult,
@@ -47,6 +49,15 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
     }
   }, [config?.ollama.enabled, hasCheckedHealth, checkLlmHealth]);
 
+  // Check if current template uses AI placeholders
+  const currentTemplateUsesAi = useMemo(() => {
+    if (!config) return true; // Assume true if no config
+    const defaultTemplate = config.templates?.find((t) => t.isDefault);
+    const currentPattern = preview?.templateUsed ?? defaultTemplate?.pattern;
+    if (!currentPattern) return true; // Assume true if no pattern
+    return templateNeedsAi(currentPattern);
+  }, [config, preview?.templateUsed]);
+
   // Don't show if LLM is disabled
   if (!config?.ollama.enabled) {
     return null;
@@ -59,6 +70,15 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
 
   const handleAnalyze = async () => {
     if (files.length > 0) {
+      // Check if template uses AI placeholders before starting
+      if (!currentTemplateUsesAi) {
+        toast.info(
+          "Your template uses {original} instead of {name}. AI analysis won't affect filenames. Edit your template to use {name} for smart naming.",
+          { duration: 6000 }
+        );
+        return;
+      }
+
       console.log("[AI Analysis] Starting analysis of", files.length, "files");
       console.log("[AI Analysis] File extensions:", files.map(f => f.extension).join(", "));
       toast.info(`Analyzing ${files.length} files...`, { duration: 3000 });
@@ -69,6 +89,16 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
       if (result.ok) {
         const { analyzed, skipped, failed, results } = result.data;
         console.log("[AI Analysis] Summary - analyzed:", analyzed, "skipped:", skipped, "failed:", failed);
+
+        // Check if this was skipped due to template not using AI
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+        if ((result.data as any)._templateSkipped) {
+          toast.info(
+            "Your template uses {original} instead of {name}. Edit your template to use {name} for AI-powered naming.",
+            { duration: 6000 }
+          );
+          return;
+        }
 
         // Log details of each result for debugging
         results.forEach(r => {
@@ -270,7 +300,10 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span>
+              <span className="flex items-center gap-1">
+                {!currentTemplateUsesAi && (
+                  <AlertCircle className="h-4 w-4 text-amber-500" />
+                )}
                 <Button
                   variant={hasResults ? "outline" : "default"}
                   size="sm"
@@ -291,11 +324,19 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
                 </Button>
               </span>
             </TooltipTrigger>
-            {!isLlmAvailable && (
-              <TooltipContent>
+            <TooltipContent>
+              {!isLlmAvailable ? (
                 <p>{providerName} is not available. Check your settings.</p>
-              </TooltipContent>
-            )}
+              ) : !currentTemplateUsesAi ? (
+                <div className="max-w-xs">
+                  <p className="font-medium text-amber-600">Template will not use AI names</p>
+                  <p className="text-xs mt-1">
+                    Your template uses {"{original}"} which ignores AI suggestions.
+                    Use {"{name}"} to enable smart AI naming.
+                  </p>
+                </div>
+              ) : null}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
