@@ -138,12 +138,13 @@ describe("App", () => {
       selectedFolder: "/empty/folder",
       scanStatus: "success",
       scanResult: { files: [], totalCount: 0, totalSize: 0 },
+      workflowStep: "select",
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/No files here/i)).toBeInTheDocument();
+      expect(screen.getByText(/No files found/i)).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Try Another Folder/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Re-scan/i })).toBeInTheDocument();
   });
 
   it("displays error state when scan fails", async () => {
