@@ -53,6 +53,9 @@ export type PreviewStatus = "idle" | "generating" | "ready" | "applying" | "erro
 export type LlmStatus = "idle" | "checking" | "available" | "unavailable";
 export type AiAnalysisStatus = "idle" | "analyzing" | "done" | "error";
 
+/** Workflow step for the 3-step wizard UI */
+export type WorkflowStep = "select" | "configure" | "preview";
+
 /**
  * Check if a template pattern uses AI-related placeholders.
  * Returns true if the template contains {name} or {ai}, meaning AI analysis would be useful.
@@ -77,6 +80,7 @@ export function templateNeedsAi(templatePattern: string): boolean {
 // Re-export types for consumers that import from the store
 export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult, ReorganizationMode, OrganizeOptions, AnalysisProgress };
 export type { CaseStyle } from "@/lib/tauri";
+// WorkflowStep is already exported from the type definition above
 
 export type Result<T, E = Error> =
   | { ok: true; data: T }
@@ -95,6 +99,9 @@ export interface AppState {
   status: AppStatus;
   error: string | null;
   versionInfo: VersionInfo | null;
+
+  // Workflow State (Step-based wizard UI)
+  workflowStep: WorkflowStep;
 
   // Folder/Scan State (Story 6.2)
   selectedFolder: string | null;
@@ -144,6 +151,11 @@ export interface AppState {
   selectFolder: (path: string) => Promise<Result<ScanResult>>;
   clearFolder: () => void;
   reset: () => void;
+
+  // Workflow Actions
+  setWorkflowStep: (step: WorkflowStep) => void;
+  goToNextStep: () => void;
+  goToPreviousStep: () => void;
 
   // Scan Options Actions (Story 6.5)
   setScanOptions: (options: Partial<ScanOptionsState>) => void;
@@ -199,6 +211,9 @@ const initialState = {
   status: "idle" as AppStatus,
   error: null as string | null,
   versionInfo: null as VersionInfo | null,
+  // Workflow state
+  workflowStep: "select" as WorkflowStep,
+  // Folder/Scan state
   selectedFolder: null as string | null,
   scanStatus: "idle" as ScanStatus,
   scanResult: null as ScanResult | null,
@@ -278,6 +293,8 @@ export const useAppStore = create<AppState>((set) => ({
         scanResult: result,
         scanStatus: "success",
         scanError: null,
+        // Auto-advance to configure step on successful scan
+        workflowStep: result.totalCount > 0 ? "configure" : "select",
       });
       return { ok: true, data: result };
     } catch (e) {
@@ -297,9 +314,36 @@ export const useAppStore = create<AppState>((set) => ({
       scanStatus: "idle",
       scanResult: null,
       scanError: null,
+      workflowStep: "select",
     }),
 
   reset: () => set(initialState),
+
+  // ==========================================================================
+  // Workflow Actions
+  // ==========================================================================
+
+  setWorkflowStep: (step: WorkflowStep) => {
+    set({ workflowStep: step });
+  },
+
+  goToNextStep: () => {
+    const { workflowStep } = useAppStore.getState();
+    const steps: WorkflowStep[] = ["select", "configure", "preview"];
+    const currentIndex = steps.indexOf(workflowStep);
+    if (currentIndex < steps.length - 1) {
+      set({ workflowStep: steps[currentIndex + 1] });
+    }
+  },
+
+  goToPreviousStep: () => {
+    const { workflowStep } = useAppStore.getState();
+    const steps: WorkflowStep[] = ["select", "configure", "preview"];
+    const currentIndex = steps.indexOf(workflowStep);
+    if (currentIndex > 0) {
+      set({ workflowStep: steps[currentIndex - 1] });
+    }
+  },
 
   // ==========================================================================
   // Scan Options Actions (Story 6.5)

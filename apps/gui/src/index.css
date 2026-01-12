@@ -269,3 +269,21 @@ body {
   .text-body { font-size: var(--font-size-body); font-weight: 400; letter-spacing: var(--letter-spacing-body); line-height: var(--line-height-body); }
 }
 
+/* Step transition animations */
+@keyframes step-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .animate-step-in {
+    animation: step-fade-in 0.3s ease-out forwards;
+  }
+}
+
