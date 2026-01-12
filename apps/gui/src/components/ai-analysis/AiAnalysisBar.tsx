@@ -20,6 +20,10 @@ import {
 import { useAppStore, templateNeedsAi } from "@/stores/app-store";
 import type { FileInfo } from "@/lib/tauri";
 
+// Supported file extensions for AI analysis (defined outside component for referential stability)
+const SUPPORTED_TEXT_EXTENSIONS = ["txt", "md", "json", "yaml", "yml", "py", "js", "ts", "tsx", "jsx", "html", "css", "xml", "csv"];
+const SUPPORTED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
+
 interface AiAnalysisBarProps {
   files: FileInfo[];
   disabled?: boolean;
@@ -57,6 +61,38 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
     if (!currentPattern) return true; // Assume true if no pattern
     return templateNeedsAi(currentPattern);
   }, [config, preview?.templateUsed]);
+
+  // Check how many files can be analyzed
+  const analyzableFilesInfo = useMemo(() => {
+    const visionEnabled = config?.ollama.visionEnabled ?? false;
+    let textCount = 0;
+    let imageCount = 0;
+    let unsupportedCount = 0;
+
+    for (const file of files) {
+      const ext = (file.extension || "").toLowerCase();
+      if (SUPPORTED_TEXT_EXTENSIONS.includes(ext)) {
+        textCount++;
+      } else if (SUPPORTED_IMAGE_EXTENSIONS.includes(ext)) {
+        if (visionEnabled) {
+          imageCount++;
+        } else {
+          unsupportedCount++;
+        }
+      } else {
+        unsupportedCount++;
+      }
+    }
+
+    return {
+      textCount,
+      imageCount,
+      unsupportedCount,
+      totalAnalyzable: textCount + imageCount,
+      allUnsupported: textCount + imageCount === 0 && unsupportedCount > 0,
+      hasImagesWithoutVision: !visionEnabled && files.some(f => SUPPORTED_IMAGE_EXTENSIONS.includes((f.extension || "").toLowerCase())),
+    };
+  }, [files, config?.ollama.visionEnabled]);
 
   // Don't show if LLM is disabled
   if (!config?.ollama.enabled) {
@@ -158,6 +194,50 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
         </div>
       )}
 
+      {/* Proactive empty state - shown BEFORE analysis when no files are analyzable */}
+      {!isAnalyzing && !hasResults && analyzableFilesInfo.allUnsupported && files.length > 0 && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 px-2 py-1 bg-amber-100 dark:bg-amber-900/50 rounded text-amber-700 dark:text-amber-300 cursor-help">
+                <AlertCircle className="w-4 h-4" aria-hidden="true" />
+                <span className="text-xs font-medium">No analyzable files</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">
+              <p className="font-medium mb-1">These file types cannot be analyzed</p>
+              <p className="text-xs mb-2">
+                AI analysis supports: .txt, .md, .json, .yaml, .py, .js, .ts, etc.
+              </p>
+              {analyzableFilesInfo.hasImagesWithoutVision && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Tip: Enable &quot;Vision Model&quot; in AI settings to analyze images.
+                </p>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {/* Proactive hint - files analyzable but vision disabled */}
+      {!isAnalyzing && !hasResults && !analyzableFilesInfo.allUnsupported && analyzableFilesInfo.hasImagesWithoutVision && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-400 dark:border-amber-600 cursor-help">
+                {analyzableFilesInfo.totalAnalyzable}/{files.length} analyzable
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">
+              <p className="font-medium mb-1">Some files cannot be analyzed</p>
+              <p className="text-xs">
+                Enable &quot;Vision Model&quot; in AI settings to analyze {files.length - analyzableFilesInfo.totalAnalyzable} image files.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
       {/* Active AI indicator with preview - shown when AI suggestions are being used */}
       {hasSuccessfulResults && (
         <TooltipProvider>
@@ -208,7 +288,7 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-600 cursor-help">
+                  <Badge variant="outline" className="text-xs text-yellow-600 dark:text-yellow-400 border-yellow-600 dark:border-yellow-500 cursor-help">
                     0 analyzed
                   </Badge>
                 </TooltipTrigger>
@@ -224,7 +304,7 @@ export function AiAnalysisBar({ files, disabled }: AiAnalysisBarProps) {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-xs cursor-help text-orange-600 border-orange-600">
+                  <Badge variant="outline" className="text-xs cursor-help text-orange-600 dark:text-orange-400 border-orange-600 dark:border-orange-500">
                     {lastAnalysisResult.skipped} skipped
                   </Badge>
                 </TooltipTrigger>

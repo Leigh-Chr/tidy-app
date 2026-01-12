@@ -72,7 +72,7 @@ export function ActionBar({
           )}
           {hasApplied && (
             <div
-              className="flex items-center gap-2 text-sm text-green-600"
+              className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400"
               data-testid="action-bar-applied-message"
             >
               <CheckCheck className="h-4 w-4" />
@@ -193,7 +193,7 @@ export function ActionBar({
               </span>
             )}
             {actionSummary.moveCount > 0 && (
-              <span className="flex items-center gap-1 text-amber-600" data-testid="action-bar-moves">
+              <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400" data-testid="action-bar-moves">
                 <FolderTree className="h-3 w-3" />
                 {actionSummary.moveCount} move{actionSummary.moveCount !== 1 ? "s" : ""}
               </span>

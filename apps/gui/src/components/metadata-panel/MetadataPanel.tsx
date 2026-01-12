@@ -34,10 +34,10 @@ const CAPABILITY_DISPLAY: Record<
   MetadataCapability,
   { label: string; color: string }
 > = {
-  none: { label: "None", color: "bg-gray-100 text-gray-700" },
-  basic: { label: "Basic", color: "bg-blue-100 text-blue-700" },
-  extended: { label: "Extended", color: "bg-green-100 text-green-700" },
-  full: { label: "Full", color: "bg-purple-100 text-purple-700" },
+  none: { label: "None", color: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300" },
+  basic: { label: "Basic", color: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" },
+  extended: { label: "Extended", color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" },
+  full: { label: "Full", color: "bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300" },
 };
 
 /** Format date for display */

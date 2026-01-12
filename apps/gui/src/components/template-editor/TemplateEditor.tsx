@@ -6,13 +6,23 @@
  * Story 6.3 - AC3: Create New Template, AC4: Edit Existing Template
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
 import { X, Plus, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAppStore, type Template } from "@/stores/app-store";
 
 export interface TemplateEditorProps {
@@ -44,14 +54,45 @@ export function TemplateEditor({ template, onClose }: TemplateEditorProps) {
   const isEditing = !!template;
   const isSaving = configStatus === "saving";
 
-  const [formData, setFormData] = useState<FormData>({
-    name: template?.name ?? "",
-    pattern: template?.pattern ?? "{name}_{date:YYYY-MM-DD}.{ext}",
-    fileTypes: template?.fileTypes ?? [],
-  });
+  // Initial form data to track changes
+  const initialData: FormData = useMemo(
+    () => ({
+      name: template?.name ?? "",
+      pattern: template?.pattern ?? "{name}_{date:YYYY-MM-DD}.{ext}",
+      fileTypes: template?.fileTypes ?? [],
+    }),
+    [template]
+  );
 
+  const [formData, setFormData] = useState<FormData>(initialData);
   const [errors, setErrors] = useState<FormErrors>({});
   const [newFileType, setNewFileType] = useState("");
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+
+  // Check if form has unsaved changes
+  const isDirty = useMemo(() => {
+    return (
+      formData.name !== initialData.name ||
+      formData.pattern !== initialData.pattern ||
+      formData.fileTypes.length !== initialData.fileTypes.length ||
+      formData.fileTypes.some((ft, i) => ft !== initialData.fileTypes[i])
+    );
+  }, [formData, initialData]);
+
+  // Handle close with unsaved changes check
+  const handleClose = useCallback(() => {
+    if (isDirty) {
+      setShowDiscardDialog(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
+  // Discard changes and close
+  const handleDiscardAndClose = useCallback(() => {
+    setShowDiscardDialog(false);
+    onClose();
+  }, [onClose]);
 
   // Live preview of pattern
   const preview = useMemo(() => {
@@ -140,7 +181,7 @@ export function TemplateEditor({ template, onClose }: TemplateEditorProps) {
         <Button
           variant="ghost"
           size="icon"
-          onClick={onClose}
+          onClick={handleClose}
           data-testid="close-editor"
         >
           <X className="h-4 w-4" />
@@ -266,7 +307,7 @@ export function TemplateEditor({ template, onClose }: TemplateEditorProps) {
       <div className="flex justify-end gap-2 pt-4 border-t">
         <Button
           variant="outline"
-          onClick={onClose}
+          onClick={handleClose}
           disabled={isSaving}
           data-testid="cancel-button"
         >
@@ -280,6 +321,29 @@ export function TemplateEditor({ template, onClose }: TemplateEditorProps) {
           {isSaving ? "Saving..." : isEditing ? "Save Changes" : "Create Template"}
         </Button>
       </div>
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <AlertDialogContent data-testid="discard-changes-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Are you sure you want to close without saving?
+              Your changes will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="cancel-discard">Keep Editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDiscardAndClose}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="confirm-discard"
+            >
+              Discard Changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

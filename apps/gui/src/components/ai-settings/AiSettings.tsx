@@ -251,9 +251,9 @@ export function AiSettings({ config }: AiSettingsProps) {
           {llmStatus === "checking" ? (
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           ) : llmStatus === "available" ? (
-            <CheckCircle className="h-5 w-5 text-green-600" />
+            <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
           ) : (
-            <XCircle className="h-5 w-5 text-red-500" />
+            <XCircle className="h-5 w-5 text-red-500 dark:text-red-400" />
           )}
           <div>
             <p className="font-medium">
@@ -564,9 +564,10 @@ export function AiSettings({ config }: AiSettingsProps) {
 
       {/* Status indicator */}
       {isSaving && (
-        <p className="text-sm text-muted-foreground text-center" data-testid="saving-indicator">
-          Saving...
-        </p>
+        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground" data-testid="saving-indicator">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          <span>Saving...</span>
+        </div>
       )}
 
       {/* Error state */}

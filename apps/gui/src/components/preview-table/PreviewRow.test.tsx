@@ -238,7 +238,10 @@ describe("PreviewRow", () => {
         />
       );
 
-      expect(screen.queryByTestId("preview-details-test-1")).not.toBeInTheDocument();
+      // Details container is always in DOM for animation, but hidden via CSS (max-h-0, opacity-0)
+      const detailsElement = screen.getByTestId("preview-details-test-1");
+      // Parent container should have the collapsed animation classes
+      expect(detailsElement.parentElement).toHaveClass("max-h-0", "opacity-0");
     });
 
     it("calls onToggleExpand when expand button clicked", async () => {

@@ -55,7 +55,7 @@ export function ConfirmRename({
 
               {hasIssues && (
                 <div
-                  className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-800"
+                  className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-md text-yellow-800 dark:text-yellow-200"
                   data-testid="confirm-rename-warning"
                 >
                   <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />

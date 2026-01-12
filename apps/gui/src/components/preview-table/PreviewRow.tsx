@@ -197,8 +197,8 @@ export function PreviewRow({
             <span
               key={idx}
               className={cn(
-                segment.type === "added" && "bg-green-200 text-green-900 px-0.5 rounded",
-                segment.type === "removed" && "bg-red-200 text-red-900 line-through"
+                segment.type === "added" && "bg-green-200 dark:bg-green-800/50 text-green-900 dark:text-green-100 px-0.5 rounded",
+                segment.type === "removed" && "bg-red-200 dark:bg-red-800/50 text-red-900 dark:text-red-100 line-through"
               )}
             >
               {segment.text}
@@ -238,8 +238,13 @@ export function PreviewRow({
         </div>
       </div>
 
-      {/* Expanded Details */}
-      {isExpanded && (
+      {/* Expanded Details - with smooth animation */}
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-200 ease-out",
+          isExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+        )}
+      >
         <div
           className="px-4 pb-3 pt-0 pl-14 text-sm space-y-2"
           data-testid={`preview-details-${proposal.id}`}
@@ -310,7 +315,7 @@ export function PreviewRow({
                 {proposal.metadataSources.map((source) => (
                   <span
                     key={source}
-                    className="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded"
+                    className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded"
                   >
                     {source}
                   </span>
@@ -325,7 +330,7 @@ export function PreviewRow({
               <span className="text-muted-foreground">Issues:</span>
               <ul className="list-disc list-inside space-y-1 text-sm">
                 {proposal.issues.map((issue, idx) => (
-                  <li key={idx} className="text-red-600">
+                  <li key={idx} className="text-red-600 dark:text-red-400">
                     {issue.message}
                     {issue.field && (
                       <span className="text-muted-foreground ml-1">
@@ -344,7 +349,7 @@ export function PreviewRow({
             <div>Proposed: {proposal.proposedPath}</div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

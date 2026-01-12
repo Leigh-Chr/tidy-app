@@ -234,8 +234,9 @@ describe("ExportButton", () => {
   describe("loading state", () => {
     it("shows loading state while exporting", async () => {
       const { exportResults } = await import("@/lib/tauri");
+      let resolveExport: (value: { path: string; size: number }) => void;
       vi.mocked(exportResults).mockImplementationOnce(
-        () => new Promise((resolve) => setTimeout(resolve, 100))
+        () => new Promise((resolve) => { resolveExport = resolve; })
       );
       const user = userEvent.setup();
 
@@ -245,6 +246,14 @@ describe("ExportButton", () => {
 
       // Button should be disabled during export
       expect(screen.getByTestId("export-button")).toBeDisabled();
+
+      // Resolve the export to allow cleanup
+      resolveExport!({ path: "/test/export.json", size: 1024 });
+
+      // Wait for state to settle
+      await waitFor(() => {
+        expect(screen.getByTestId("export-button")).not.toBeDisabled();
+      });
     });
   });
 

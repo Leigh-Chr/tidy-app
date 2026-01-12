@@ -8,8 +8,9 @@
 
 import { useState, useCallback, useEffect, DragEvent } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { Loader2 } from "lucide-react";
+import { Loader2, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export interface DropZoneProps {
   /** Callback when a folder is selected via drag-drop */
@@ -178,20 +179,18 @@ export function DropZone({
   const showLoading = isLoading;
 
   // Build class names based on state
-  const containerClasses = [
+  const containerClasses = cn(
     "flex min-h-[200px] items-center justify-center rounded-lg border-2 border-dashed",
-    "transition-all duration-200",
+    "transition-all duration-200 ease-out",
     // Default state
-    !isHover && !showLoading && !disabled && "border-muted-foreground/25 bg-muted/50",
-    // Hover state (drag over)
-    isHover && "border-primary bg-primary/5 scale-[1.01]",
+    !isHover && !showLoading && !disabled && "border-muted-foreground/25 bg-muted/50 hover:border-muted-foreground/40",
+    // Hover state (drag over) - enhanced feedback
+    isHover && "border-primary bg-primary/10 scale-[1.02] shadow-lg shadow-primary/20 ring-4 ring-primary/10",
     // Disabled state
     disabled && "opacity-50 cursor-not-allowed border-muted-foreground/25 bg-muted/30",
     // Loading state
-    showLoading && "border-muted-foreground/25 bg-muted/50",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    showLoading && "border-muted-foreground/25 bg-muted/50"
+  );
 
   return (
     <div
@@ -215,9 +214,13 @@ export function DropZone({
             </div>
           </div>
         ) : isHover ? (
-          // Hover/drag over state
-          <div className="space-y-2">
-            <p className="text-primary font-medium">Drop to scan</p>
+          // Hover/drag over state - enhanced visual feedback
+          <div className="space-y-3">
+            <FolderOpen
+              className="h-12 w-12 mx-auto text-primary animate-bounce"
+              aria-hidden="true"
+            />
+            <p className="text-primary font-semibold text-lg">Drop to scan</p>
             <p className="text-sm text-muted-foreground">
               Release to start scanning
             </p>
