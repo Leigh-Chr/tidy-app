@@ -15,7 +15,9 @@
     "tauri:dev": "turbo run tauri:dev",
     "tauri:build": "turbo run tauri:build",
     "knip": "knip",
-    "prepare": "husky"
+    "prepare": "husky",
+    "types:generate": "cd apps/gui/src-tauri && cargo test export_bindings",
+    "types:validate": "npx tsx scripts/validate-types.ts"
   },
   "devDependencies": {
     "@eslint/compat": "^2.0.1",
