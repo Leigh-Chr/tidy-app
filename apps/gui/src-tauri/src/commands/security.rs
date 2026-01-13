@@ -267,7 +267,13 @@ mod tests {
     #[test]
     fn test_validate_path_outside_base() {
         let temp_dir = TempDir::new().unwrap();
-        let outside = Path::new("/tmp");
+        // Use /usr on Unix or C:\Windows on Windows - paths that are definitely
+        // outside any temp directory regardless of symlink resolution
+        // (On macOS, /tmp is a symlink to /private/tmp which could be an ancestor of tempdir)
+        #[cfg(unix)]
+        let outside = Path::new("/usr");
+        #[cfg(windows)]
+        let outside = Path::new("C:\\Windows");
 
         let result = validate_path_within_base(outside, temp_dir.path());
         assert!(matches!(result, Err(SecurityError::PathTraversal)));
