@@ -52,7 +52,7 @@ export interface LoadConfigOptions extends ConfigOptions {
  * Get the path to the configuration file.
  *
  * Uses env-paths for cross-platform support:
- * - macOS: ~/Library/Application Support/tidy-app/config.json
+ * - macOS: ~/Library/Preferences/tidy-app/config.json
  * - Windows: %APPDATA%/tidy-app/config.json
  * - Linux: ~/.config/tidy-app/config.json
  *

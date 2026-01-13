@@ -80,7 +80,7 @@ export function resolveConfigPath(options?: ResolveConfigPathOptions): string {
  * Get the default configuration directory path.
  *
  * Returns the OS-appropriate config directory:
- * - macOS: ~/Library/Application Support/tidy-app/
+ * - macOS: ~/Library/Preferences/tidy-app/
  * - Windows: %APPDATA%/tidy-app/
  * - Linux: ~/.config/tidy-app/
  *

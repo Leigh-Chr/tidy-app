@@ -140,7 +140,7 @@ describe('getDefaultConfigDir', () => {
     // Should be a config directory
     const platform = process.platform;
     if (platform === 'darwin') {
-      expect(dir).toContain('Library/Application Support');
+      expect(dir).toContain('Library/Preferences');
     } else if (platform === 'win32') {
       expect(dir.toLowerCase()).toMatch(/appdata/i);
     } else {
