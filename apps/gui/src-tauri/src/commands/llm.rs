@@ -12,6 +12,28 @@ use tokio::sync::{RwLock, Semaphore};
 use lazy_static::lazy_static;
 use tauri::Emitter;
 
+use super::secrets::retrieve_secret;
+
+/// Secret key identifier for OpenAI API key (SEC-004)
+const OPENAI_API_KEY_SECRET: &str = "openai_api_key";
+
+/// Retrieve OpenAI API key from secure storage (SEC-004)
+/// Falls back to config value for migration compatibility
+async fn get_openai_api_key(config_key: &str) -> String {
+    // Try to retrieve from secure storage first
+    match retrieve_secret(OPENAI_API_KEY_SECRET.to_string()).await {
+        Ok(key) if !key.is_empty() => key,
+        _ => {
+            // Fallback to config for migration (if not "[SECURED]" placeholder)
+            if config_key != "[SECURED]" && !config_key.is_empty() {
+                config_key.to_string()
+            } else {
+                String::new()
+            }
+        }
+    }
+}
+
 // =============================================================================
 // Session Cache for Analysis Results (with RwLock for better concurrency)
 // =============================================================================
@@ -845,6 +867,9 @@ pub async fn check_openai_health(
     // Validate URL security (SEC-001)
     validate_openai_url_security(&base_url)?;
 
+    // Retrieve API key from secure storage if not provided (SEC-004)
+    let effective_api_key = get_openai_api_key(&api_key).await;
+
     let client = Client::builder()
         .timeout(Duration::from_millis(timeout_ms))
         .build()
@@ -854,7 +879,7 @@ pub async fn check_openai_health(
     let checked_at = chrono::Utc::now().to_rfc3339();
 
     // Check for empty API key
-    if api_key.is_empty() {
+    if effective_api_key.is_empty() {
         return Ok(HealthStatus {
             available: false,
             model_count: None,
@@ -864,7 +889,7 @@ pub async fn check_openai_health(
 
     match client
         .get(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", format!("Bearer {}", effective_api_key))
         .send()
         .await
     {
@@ -1812,7 +1837,8 @@ async fn analyze_with_openai(
     config: &OllamaConfig,
     existing_folders: &[String],
 ) -> FileAnalysisResult {
-    let api_key = &config.openai.api_key;
+    // Retrieve API key from secure storage (SEC-004)
+    let api_key = get_openai_api_key(&config.openai.api_key).await;
     if api_key.is_empty() {
         return FileAnalysisResult {
             file_path: file_path.to_string(),
@@ -2024,7 +2050,8 @@ async fn analyze_image_with_openai(
     config: &OllamaConfig,
     existing_folders: &[String],
 ) -> FileAnalysisResult {
-    let api_key = &config.openai.api_key;
+    // Retrieve API key from secure storage (SEC-004)
+    let api_key = get_openai_api_key(&config.openai.api_key).await;
     if api_key.is_empty() {
         return FileAnalysisResult {
             file_path: file_path.to_string(),

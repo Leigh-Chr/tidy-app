@@ -1497,3 +1497,57 @@ export async function onAnalysisProgress(
   });
   return unlisten;
 }
+
+// =============================================================================
+// Secure Secrets Storage (SEC-004)
+// =============================================================================
+
+/**
+ * Store a secret securely using encrypted storage.
+ * Secrets are encrypted with AES-256-GCM using a machine-derived key.
+ *
+ * @param key - Unique identifier for the secret (e.g., "openai_api_key")
+ * @param value - The secret value to store
+ * @throws Error if encryption or storage fails
+ *
+ * @example
+ * ```typescript
+ * await storeSecret("openai_api_key", "sk-...");
+ * ```
+ */
+export async function storeSecret(key: string, value: string): Promise<void> {
+  await invoke<void>("store_secret", { key, value });
+}
+
+/**
+ * Retrieve a secret from encrypted storage.
+ *
+ * @param key - Unique identifier for the secret
+ * @returns The decrypted secret value, or empty string if not found
+ * @throws Error if decryption fails
+ *
+ * @example
+ * ```typescript
+ * const apiKey = await retrieveSecret("openai_api_key");
+ * if (apiKey) {
+ *   // Use the API key
+ * }
+ * ```
+ */
+export async function retrieveSecret(key: string): Promise<string> {
+  return invoke<string>("retrieve_secret", { key });
+}
+
+/**
+ * Delete a secret from encrypted storage.
+ *
+ * @param key - Unique identifier for the secret to delete
+ *
+ * @example
+ * ```typescript
+ * await deleteSecret("openai_api_key");
+ * ```
+ */
+export async function deleteSecret(key: string): Promise<void> {
+  await invoke<void>("delete_secret", { key });
+}
