@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { RefreshCw, CheckCircle, XCircle, Loader2, Eye, EyeOff } from "lucide-react";
+import { RefreshCw, CheckCircle, XCircle, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Switch } from "@/components/ui/switch";
@@ -21,8 +21,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAppStore, type OllamaConfig } from "@/stores/app-store";
 import type { FileTypePreset, LlmProvider, OfflineMode } from "@/lib/tauri";
+import { storeSecret, retrieveSecret } from "@/lib/tauri";
+import { secureLog } from "@/lib/log-utils";
+
+// Secret key identifier for OpenAI API key (SEC-004)
+const OPENAI_API_KEY_SECRET = "openai_api_key";
 
 // =============================================================================
 // Input Validation Schemas (P2-006)
@@ -116,7 +127,8 @@ export function AiSettings({ config }: AiSettingsProps) {
   } = useAppStore();
 
   const [localBaseUrl, setLocalBaseUrl] = useState(config.baseUrl);
-  const [localApiKey, setLocalApiKey] = useState(config.openai?.apiKey || "");
+  const [localApiKey, setLocalApiKey] = useState("");
+  const [isApiKeyLoaded, setIsApiKeyLoaded] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   // Validation error state (P2-006)
   const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
@@ -124,6 +136,23 @@ export function AiSettings({ config }: AiSettingsProps) {
   const isSaving = configStatus === "saving";
   const isChecking = llmStatus === "checking";
   const isOpenAi = config.provider === "openai";
+
+  // Load API key from secure storage on mount (SEC-004)
+  useEffect(() => {
+    if (isOpenAi && !isApiKeyLoaded) {
+      retrieveSecret(OPENAI_API_KEY_SECRET)
+        .then((key) => {
+          setLocalApiKey(key);
+          setIsApiKeyLoaded(true);
+        })
+        .catch((err) => {
+          secureLog.warn("Failed to load API key from secure storage:", err);
+          // Fallback to config (for migration from old storage)
+          setLocalApiKey(config.openai?.apiKey || "");
+          setIsApiKeyLoaded(true);
+        });
+    }
+  }, [isOpenAi, isApiKeyLoaded, config.openai?.apiKey]);
 
   // Load models when component mounts and provider is enabled
   useEffect(() => {
@@ -178,11 +207,15 @@ export function AiSettings({ config }: AiSettingsProps) {
 
   const handleCheckConnection = async () => {
     if (isOpenAi) {
-      // Save API key if changed
-      if (localApiKey !== config.openai?.apiKey) {
+      // Save API key to secure storage if changed (SEC-004)
+      try {
+        await storeSecret(OPENAI_API_KEY_SECRET, localApiKey);
+        // Also update config (without the actual key, just mark as configured)
         await updateOllamaConfig({
-          openai: { ...config.openai, apiKey: localApiKey },
+          openai: { ...config.openai, apiKey: localApiKey ? "[SECURED]" : "" },
         });
+      } catch (err) {
+        secureLog.error("Failed to save API key:", err);
       }
     } else {
       // Save base URL if changed
@@ -231,6 +264,21 @@ export function AiSettings({ config }: AiSettingsProps) {
   };
 
   const handleApiKeyBlur = async () => {
+    // Allow empty key (to clear it)
+    if (localApiKey === "") {
+      setApiKeyError(null);
+      try {
+        await storeSecret(OPENAI_API_KEY_SECRET, "");
+        await updateOllamaConfig({
+          openai: { ...config.openai, apiKey: "" },
+        });
+        toast.success("API key cleared");
+      } catch {
+        toast.error("Failed to clear API key");
+      }
+      return;
+    }
+
     // Validate before saving (P2-006)
     const validation = apiKeySchema.safeParse(localApiKey);
     if (!validation.success) {
@@ -239,15 +287,17 @@ export function AiSettings({ config }: AiSettingsProps) {
     }
     setApiKeyError(null);
 
-    if (localApiKey !== config.openai?.apiKey) {
-      const result = await updateOllamaConfig({
-        openai: { ...config.openai, apiKey: localApiKey },
+    // Save to secure storage (SEC-004)
+    try {
+      await storeSecret(OPENAI_API_KEY_SECRET, localApiKey);
+      // Update config with placeholder to indicate key is configured
+      await updateOllamaConfig({
+        openai: { ...config.openai, apiKey: "[SECURED]" },
       });
-      if (result.ok) {
-        toast.success("API key saved");
-      } else {
-        toast.error("Failed to save API key");
-      }
+      toast.success("API key saved securely");
+    } catch (err) {
+      secureLog.error("Failed to save API key:", err);
+      toast.error("Failed to save API key");
     }
   };
 
@@ -481,7 +531,24 @@ export function AiSettings({ config }: AiSettingsProps) {
         <>
           {/* API Key */}
           <div className="space-y-2">
-            <Label htmlFor="openai-api-key">API Key</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="openai-api-key">API Key</Label>
+              {localApiKey && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                        <ShieldCheck className="h-3 w-3" />
+                        <span className="sr-only">Securely stored</span>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>API key is encrypted and stored securely</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input

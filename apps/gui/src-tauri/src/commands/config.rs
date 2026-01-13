@@ -557,6 +557,91 @@ impl Default for AppConfig {
 }
 
 // =============================================================================
+// Config Validation (SEC-005)
+// =============================================================================
+
+/// Validate configuration values for integrity and security
+fn validate_config(config: &AppConfig) -> Result<(), ConfigError> {
+    // Validate version
+    if config.version < 1 {
+        return Err(ConfigError::ParseError("Config version must be >= 1".to_string()));
+    }
+
+    // Validate templates
+    for template in &config.templates {
+        // Template name must not be empty
+        if template.name.trim().is_empty() {
+            return Err(ConfigError::ParseError(
+                format!("Template '{}' has empty name", template.id)
+            ));
+        }
+        // Pattern must not be empty
+        if template.pattern.trim().is_empty() {
+            return Err(ConfigError::ParseError(
+                format!("Template '{}' has empty pattern", template.name)
+            ));
+        }
+        // Pattern length check (prevent DoS)
+        if template.pattern.len() > 1000 {
+            return Err(ConfigError::ParseError(
+                format!("Template '{}' pattern too long (max 1000 chars)", template.name)
+            ));
+        }
+    }
+
+    // Validate folder structures
+    for structure in &config.folder_structures {
+        if structure.name.trim().is_empty() {
+            return Err(ConfigError::ParseError(
+                format!("Folder structure '{}' has empty name", structure.id)
+            ));
+        }
+        if structure.pattern.trim().is_empty() {
+            return Err(ConfigError::ParseError(
+                format!("Folder structure '{}' has empty pattern", structure.name)
+            ));
+        }
+    }
+
+    // Validate Ollama config
+    if config.ollama.timeout < 1000 {
+        // Minimum 1 second timeout
+        return Err(ConfigError::ParseError(
+            "Ollama timeout must be at least 1000ms".to_string()
+        ));
+    }
+    if config.ollama.timeout > 300000 {
+        // Maximum 5 minutes timeout
+        return Err(ConfigError::ParseError(
+            "Ollama timeout must be at most 300000ms (5 minutes)".to_string()
+        ));
+    }
+
+    // Validate base URL format
+    if !config.ollama.base_url.starts_with("http://") && !config.ollama.base_url.starts_with("https://") {
+        return Err(ConfigError::ParseError(
+            "Ollama base URL must start with http:// or https://".to_string()
+        ));
+    }
+
+    // Validate OpenAI base URL format
+    if !config.ollama.openai.base_url.starts_with("http://") && !config.ollama.openai.base_url.starts_with("https://") {
+        return Err(ConfigError::ParseError(
+            "OpenAI base URL must start with http:// or https://".to_string()
+        ));
+    }
+
+    // Validate recent folders count (prevent memory bloat)
+    if config.recent_folders.len() > 100 {
+        return Err(ConfigError::ParseError(
+            "Too many recent folders (max 100)".to_string()
+        ));
+    }
+
+    Ok(())
+}
+
+// =============================================================================
 // Path Utilities
 // =============================================================================
 
@@ -641,6 +726,15 @@ pub async fn get_config() -> Result<AppConfig, ConfigError> {
         }
     }
 
+    // Validate config integrity and security (SEC-005)
+    if let Err(e) = validate_config(&config) {
+        eprintln!("Config validation failed: {}", e);
+        // Return default config on validation failure (graceful degradation)
+        let default = default_config();
+        cache_config(&default);
+        return Ok(default);
+    }
+
     // Store in cache for subsequent calls
     cache_config(&config);
 
@@ -656,6 +750,9 @@ pub async fn get_config() -> Result<AppConfig, ConfigError> {
 /// Command name: save_config (snake_case per architecture)
 #[tauri::command]
 pub async fn save_config(config: AppConfig) -> Result<(), ConfigError> {
+    // Validate config before saving (SEC-005)
+    validate_config(&config)?;
+
     let config_dir = get_config_dir();
     let config_path = get_config_path();
 

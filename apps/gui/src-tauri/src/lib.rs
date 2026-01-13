@@ -5,10 +5,10 @@ mod commands;
 
 use commands::{
     analyze_files_with_llm, can_undo_operation, cancel_scan, check_ollama_health, check_openai_health,
-    clear_analysis_cache, clear_history, execute_rename, export_results, generate_preview,
+    clear_analysis_cache, clear_history, delete_secret, execute_rename, export_results, generate_preview,
     get_active_scans, get_cache_stats, get_config, get_history_count, get_history_entry, get_version,
-    load_history, list_ollama_models, list_openai_models, record_operation, reset_config, save_config,
-    scan_folder, scan_folder_with_progress, undo_operation, ScanState,
+    load_history, list_ollama_models, list_openai_models, record_operation, reset_config, retrieve_secret,
+    save_config, scan_folder, scan_folder_with_progress, store_secret, undo_operation, ScanState,
 };
 use tauri::Manager;
 
@@ -67,7 +67,11 @@ pub fn run() {
             get_history_count,
             undo_operation,
             can_undo_operation,
-            clear_history
+            clear_history,
+            // Secure secrets storage (SEC-004)
+            store_secret,
+            retrieve_secret,
+            delete_secret
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
