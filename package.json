@@ -23,7 +23,9 @@
     "knip": "knip",
     "prepare": "husky",
     "types:generate": "cd apps/gui/src-tauri && cargo test export_bindings",
-    "types:validate": "npx tsx scripts/validate-types.ts"
+    "types:validate": "npx tsx scripts/validate-types.ts",
+    "version:bump": "npx tsx scripts/bump-version.ts",
+    "version:check": "npx tsx scripts/bump-version.ts --help"
   },
   "devDependencies": {
     "@eslint/compat": "^2.0.1",
