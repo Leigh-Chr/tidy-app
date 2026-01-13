@@ -7,8 +7,7 @@
  * Story 6.4 - AC1: Preview Table Display, AC2: Status Indicators, AC4: Visual Comparison
  */
 
-import { useRef, useMemo, useState, useCallback } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useMemo, useState, useCallback } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { AiSuggestion, RenamePreview, RenameProposal, RenameStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -53,7 +52,6 @@ export function PreviewTable({
   onToggleGroup,
   aiSuggestions,
 }: PreviewTableProps) {
-  const parentRef = useRef<HTMLDivElement>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
 
@@ -114,12 +112,6 @@ export function PreviewTable({
     return items;
   }, [groupedProposals, collapsedGroups]);
 
-  // Convert expanded rows to a string for dependency tracking
-  const expandedRowsKey = useMemo(
-    () => Array.from(expandedRows).sort().join(","),
-    [expandedRows]
-  );
-
   // Handle selection with shift+click for range selection
   const handleSelection = useCallback(
     (proposalId: string, index: number, event: React.MouseEvent) => {
@@ -148,33 +140,6 @@ export function PreviewTable({
     [flattenedItems, lastClickedIndex, onSelectRange, onToggleSelection]
   );
 
-  // Set up virtualizer with dynamic measurement support
-  const virtualizer = useVirtualizer({
-    count: flattenedItems.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: useCallback(
-      (index: number) => {
-        const item = flattenedItems[index];
-        if (item.type === "header") return 40;
-        // Estimate larger size for expanded rows
-        const isExpanded = expandedRows.has(item.proposal.id);
-        return isExpanded ? 200 : 56;
-      },
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [flattenedItems, expandedRowsKey]
-    ),
-    overscan: 5,
-    getItemKey: (index) => {
-      const item = flattenedItems[index];
-      if (item.type === "header") return `header-${item.status}`;
-      // Include expanded state in key to force re-render when toggled
-      const isExpanded = expandedRows.has(item.proposal.id);
-      return `${item.proposal.id}-${isExpanded}`;
-    },
-  });
-
-  const virtualItems = virtualizer.getVirtualItems();
-
   if (preview.proposals.length === 0) {
     return (
       <div
@@ -187,9 +152,9 @@ export function PreviewTable({
   }
 
   return (
-    <div className="flex flex-col h-full" data-testid="preview-table">
+    <div className="flex flex-col" data-testid="preview-table">
       {/* Table Header */}
-      <div className="flex items-center border-b bg-muted/50 px-4 py-2 text-sm font-medium text-muted-foreground sticky top-0 z-10">
+      <div className="flex items-center border-b bg-muted/50 px-4 py-2 text-sm font-medium text-muted-foreground">
         <div className="w-10" /> {/* Checkbox column */}
         <div className="flex-1">Original Name</div>
         <div className="w-8 text-center">&rarr;</div>
@@ -197,90 +162,62 @@ export function PreviewTable({
         <div className="w-24 text-center">Status</div>
       </div>
 
-      {/* Virtualized List */}
-      <div
-        ref={parentRef}
-        className="flex-1 overflow-auto"
-        data-testid="preview-table-scroll"
-      >
-        <div
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: "100%",
-            position: "relative",
-          }}
-        >
-          {virtualItems.map((virtualItem) => {
-            const item = flattenedItems[virtualItem.index];
-
-            if (item.type === "header") {
-              const config = STATUS_CONFIG[item.status];
-              const isCollapsed = collapsedGroups.has(item.status);
-
-              return (
-                <div
-                  key={`header-${item.status}`}
-                  role="button"
-                  tabIndex={0}
-                  aria-expanded={!isCollapsed}
-                  aria-live="polite"
-                  aria-label={`${config.label} group, ${item.count} items. ${isCollapsed ? "Click to expand" : "Click to collapse"}`}
-                  className={cn(
-                    "absolute top-0 left-0 w-full flex items-center px-4 py-2 border-y cursor-pointer hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    config.className
-                  )}
-                  style={{
-                    height: `${virtualItem.size}px`,
-                    transform: `translateY(${virtualItem.start}px)`,
-                  }}
-                  onClick={() => onToggleGroup?.(item.status)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onToggleGroup?.(item.status);
-                    }
-                  }}
-                  data-testid={`preview-group-${item.status}`}
-                >
-                  {isCollapsed ? (
-                    <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" aria-hidden="true" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" aria-hidden="true" />
-                  )}
-                  <span className="font-medium">{config.label}</span>
-                  <span className="ml-2 text-muted-foreground">({item.count})</span>
-                </div>
-              );
-            }
-
-            // Get AI suggestion for this file (from map or from proposal itself)
-            const aiSuggestion = item.proposal.aiSuggestion ?? aiSuggestions?.get(item.proposal.originalPath);
-            const isRowExpanded = expandedRows.has(item.proposal.id);
+      {/* File List */}
+      <div data-testid="preview-table-list">
+        {flattenedItems.map((item, index) => {
+          if (item.type === "header") {
+            const config = STATUS_CONFIG[item.status];
+            const isCollapsed = collapsedGroups.has(item.status);
 
             return (
               <div
-                key={item.proposal.id}
-                className="absolute top-0 left-0 w-full"
-                style={{
-                  minHeight: `${virtualItem.size}px`,
-                  transform: `translateY(${virtualItem.start}px)`,
-                }}
-              >
-                <PreviewRow
-                  proposal={item.proposal}
-                  isSelected={selectedIds.has(item.proposal.id)}
-                  onToggleSelection={() => onToggleSelection(item.proposal.id)}
-                  onSelectionClick={(event) =>
-                    handleSelection(item.proposal.id, virtualItem.index, event)
+                key={`header-${item.status}`}
+                role="button"
+                tabIndex={0}
+                aria-expanded={!isCollapsed}
+                aria-live="polite"
+                aria-label={`${config.label} group, ${item.count} items. ${isCollapsed ? "Click to expand" : "Click to collapse"}`}
+                className={cn(
+                  "flex items-center px-4 py-2 border-y cursor-pointer hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  config.className
+                )}
+                onClick={() => onToggleGroup?.(item.status)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onToggleGroup?.(item.status);
                   }
-                  aiSuggestion={aiSuggestion}
-                  isExpanded={isRowExpanded}
-                  onToggleExpand={() => toggleRowExpansion(item.proposal.id)}
-                />
+                }}
+                data-testid={`preview-group-${item.status}`}
+              >
+                {isCollapsed ? (
+                  <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground" aria-hidden="true" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 mr-2 text-muted-foreground" aria-hidden="true" />
+                )}
+                <span className="font-medium">{config.label}</span>
+                <span className="ml-2 text-muted-foreground">({item.count})</span>
               </div>
             );
-          })}
-        </div>
+          }
+
+          // Get AI suggestion for this file (from map or from proposal itself)
+          const aiSuggestion = item.proposal.aiSuggestion ?? aiSuggestions?.get(item.proposal.originalPath);
+          const isRowExpanded = expandedRows.has(item.proposal.id);
+
+          return (
+            <PreviewRow
+              key={item.proposal.id}
+              proposal={item.proposal}
+              isSelected={selectedIds.has(item.proposal.id)}
+              onToggleSelection={() => onToggleSelection(item.proposal.id)}
+              onSelectionClick={(event) => handleSelection(item.proposal.id, index, event)}
+              aiSuggestion={aiSuggestion}
+              isExpanded={isRowExpanded}
+              onToggleExpand={() => toggleRowExpansion(item.proposal.id)}
+            />
+          );
+        })}
       </div>
     </div>
   );

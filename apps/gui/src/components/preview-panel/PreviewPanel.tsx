@@ -244,7 +244,7 @@ export function PreviewPanel() {
 
       {/* Preview Table */}
       {!lastRenameResult && filteredPreview && (
-        <div className="border rounded-lg overflow-hidden min-h-[300px] max-h-[50vh] flex flex-col bg-card">
+        <div className="border rounded-lg overflow-hidden flex flex-col bg-card">
           {/* Search/Sort/Filter Toolbar */}
           <PreviewToolbar
             searchQuery={searchQuery}
@@ -258,17 +258,15 @@ export function PreviewPanel() {
             filteredCount={filteredPreview.proposals.length}
             disabled={isApplying}
           />
-          <div className="flex-1 overflow-hidden">
-            <PreviewTable
-              preview={filteredPreview}
-              selectedIds={selectedProposalIds}
-              onToggleSelection={toggleProposalSelection}
-              onSelectRange={selectProposals}
-              collapsedGroups={collapsedGroups}
-              onToggleGroup={handleToggleGroup}
-              aiSuggestions={aiSuggestions}
-            />
-          </div>
+          <PreviewTable
+            preview={filteredPreview}
+            selectedIds={selectedProposalIds}
+            onToggleSelection={toggleProposalSelection}
+            onSelectRange={selectProposals}
+            collapsedGroups={collapsedGroups}
+            onToggleGroup={handleToggleGroup}
+            aiSuggestions={aiSuggestions}
+          />
         </div>
       )}
 
