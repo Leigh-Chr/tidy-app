@@ -151,6 +151,7 @@ pub struct ScanOptions {
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub enum SkipReason {
     /// Could not read file metadata
     MetadataError,
@@ -231,6 +232,7 @@ pub struct ScanProgress {
 #[derive(Debug, Clone, Serialize, PartialEq, TS)]
 #[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
 pub enum ScanPhase {
     /// Initial phase - preparing to scan
     Starting,
@@ -374,6 +376,7 @@ impl ScanState {
     /// Clean up sessions that have exceeded their TTL
     /// This prevents memory leaks from crashed or abandoned scans
     /// Returns 0 if mutex is poisoned
+    #[allow(dead_code)]
     pub fn cleanup_stale_sessions(&self) -> usize {
         let mut sessions = match self.sessions.lock() {
             Ok(guard) => guard,

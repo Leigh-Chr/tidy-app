@@ -18,6 +18,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[allow(unused_variables)]
             let window = app.get_webview_window("main").expect("main window not found");
 
             // Apply vibrancy effects based on platform

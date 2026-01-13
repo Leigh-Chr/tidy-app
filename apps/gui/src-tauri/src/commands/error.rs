@@ -39,6 +39,7 @@ pub enum ErrorCategory {
     /// Configuration errors
     Config,
     /// Network/API errors (LLM, external services)
+    #[allow(dead_code)]
     Network,
     /// Validation errors (invalid input)
     Validation,
@@ -72,6 +73,7 @@ impl ErrorResponse {
     }
 
     /// Add additional details
+    #[allow(dead_code)]
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
         self.details = Some(details);
         self
@@ -185,8 +187,6 @@ macro_rules! error_response {
     };
 }
 
-pub use error_response;
-
 /// Helper macro to implement Serialize for error types using to_error_response()
 /// Use this for errors that have a `to_error_response(&self) -> ErrorResponse` method
 ///
@@ -228,6 +228,3 @@ macro_rules! impl_serialize_as_string {
         }
     };
 }
-
-pub use impl_serialize_as_string;
-pub use impl_serialize_via_error_response;
