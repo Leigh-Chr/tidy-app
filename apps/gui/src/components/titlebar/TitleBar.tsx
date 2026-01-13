@@ -42,6 +42,12 @@ export function TitleBar({ showBreadcrumb = true, isMaximized = false, onMaximiz
         className="flex flex-1 items-center gap-3 px-4 h-full cursor-default"
         onMouseDown={handleDragStart}
       >
+        <img
+          src="/icon-192.png"
+          alt="Tidy App"
+          className="h-5 w-5 select-none"
+          draggable={false}
+        />
         <h1 className="text-sm font-semibold text-foreground select-none">
           tidy-app
         </h1>
