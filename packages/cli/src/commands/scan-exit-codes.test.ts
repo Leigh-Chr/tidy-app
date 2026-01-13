@@ -15,6 +15,9 @@ import { tmpdir } from 'node:os';
 
 const CLI_PATH = join(process.cwd(), 'dist', 'index.js');
 
+// Windows doesn't have /bin/bash, so shell script tests need to be skipped
+const isWindows = process.platform === 'win32';
+
 describe('scan command exit codes (Story 5.8)', () => {
   let testDir: string;
 
@@ -130,7 +133,8 @@ describe('scan command exit codes (Story 5.8)', () => {
   });
 
   // AC6: Exit codes work in shell scripts
-  describe('AC6: Exit codes work in shell scripts', () => {
+  // Skip on Windows - these tests use /bin/bash which doesn't exist on Windows
+  describe.skipIf(isWindows)('AC6: Exit codes work in shell scripts', () => {
     it('works with && operator on success', async () => {
       await writeFile(join(testDir, 'file.txt'), 'content');
 
