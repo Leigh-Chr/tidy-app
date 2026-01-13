@@ -20,10 +20,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = resolve(__dirname, '../../dist/index.js');
 
-// Skip on macOS - env-paths ignores XDG_CONFIG_HOME and uses ~/Library/Preferences
-const isMacOS = process.platform === 'darwin';
+// Skip on non-Linux - env-paths only respects XDG_CONFIG_HOME on Linux
+// macOS uses ~/Library/Preferences, Windows uses %APPDATA%
+const isLinux = process.platform === 'linux';
 
-describe.skipIf(isMacOS)('tidy config reset', () => {
+describe.skipIf(!isLinux)('tidy config reset', () => {
   let testDir: string;
   let xdgConfigHome: string;
   let configDir: string;
