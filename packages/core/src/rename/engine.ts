@@ -10,7 +10,7 @@
 import { rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { access, constants } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, resolve, normalize } from 'node:path';
 import type { RenameProposal } from '../types/rename-proposal.js';
 import type {
   BatchRenameResult,
@@ -21,6 +21,57 @@ import { RenameOutcome } from '../types/rename-result.js';
 import { ok, err, type Result } from '../types/result.js';
 import { findExistingAncestor, ensureDirectory } from './ensure-directory.js';
 import { recordOperation } from '../history/recorder.js';
+
+// =============================================================================
+// Path Security (SEC-002)
+// =============================================================================
+
+/**
+ * Validates that a proposed path doesn't escape the base directory via path traversal.
+ * Protects against patterns like "../../malicious" or absolute paths in templates.
+ *
+ * @param basePath - The base directory that all operations should stay within
+ * @param proposedPath - The proposed destination path to validate
+ * @returns true if the path is safe, false if it escapes the base directory
+ */
+export function isPathSafe(basePath: string, proposedPath: string): boolean {
+  // Resolve and normalize both paths to handle .. and symlinks
+  const normalizedBase = normalize(resolve(basePath));
+  const normalizedProposed = normalize(resolve(proposedPath));
+
+  // The proposed path must start with the base path
+  // Adding path separator ensures "/base" doesn't match "/base-other"
+  return (
+    normalizedProposed.startsWith(normalizedBase + '/') ||
+    normalizedProposed.startsWith(normalizedBase + '\\') ||
+    normalizedProposed === normalizedBase
+  );
+}
+
+/**
+ * Extracts the base directory from a set of proposals.
+ * Uses the common ancestor of all original paths.
+ *
+ * @param proposals - The proposals to extract base from
+ * @returns The common base directory, or null if cannot be determined
+ */
+export function getBaseDirectory(proposals: RenameProposal[]): string | null {
+  const firstProposal = proposals[0];
+  if (!firstProposal) return null;
+
+  // Use the directory of the first file as the initial base
+  let baseDir = dirname(firstProposal.originalPath);
+
+  for (const proposal of proposals) {
+    const dir = dirname(proposal.originalPath);
+    // Find common prefix
+    while (baseDir && !dir.startsWith(baseDir)) {
+      baseDir = dirname(baseDir);
+    }
+  }
+
+  return baseDir || null;
+}
 
 // =============================================================================
 // Types
@@ -70,7 +121,8 @@ export type ValidationErrorCode =
   | 'SOURCE_NOT_FOUND'
   | 'TARGET_EXISTS'
   | 'NO_WRITE_PERMISSION'
-  | 'NO_PERMISSION_TO_CREATE_DIRECTORY';
+  | 'NO_PERMISSION_TO_CREATE_DIRECTORY'
+  | 'PATH_TRAVERSAL';
 
 /**
  * Validation error for a single proposal.
@@ -112,12 +164,26 @@ export interface ValidateBatchRenameOptions {
    * and instead checks write permission on the existing ancestor.
    */
   createDirectories?: boolean;
+  /**
+   * Base directory for path traversal validation (SEC-002).
+   * If provided, all proposed paths must stay within this directory.
+   * If not provided, the base is inferred from the common ancestor of original paths.
+   */
+  baseDirectory?: string;
+  /**
+   * Enable strict path traversal validation.
+   * Default: true
+   *
+   * When true, rejects any proposed path that would escape the base directory.
+   */
+  validatePathTraversal?: boolean;
 }
 
 /**
  * Validate batch rename proposals before execution.
  *
  * Checks:
+ * - Path traversal security (SEC-002)
  * - All source files exist
  * - No target files would be overwritten (unless same path)
  * - Write permissions on directories
@@ -130,8 +196,11 @@ export async function validateBatchRename(
   proposals: RenameProposal[],
   options: ValidateBatchRenameOptions = {}
 ): Promise<Result<ValidationResult, Error>> {
-  const { createDirectories = true } = options;
+  const { createDirectories = true, validatePathTraversal = true } = options;
   const errors: ValidationError[] = [];
+
+  // SEC-002: Determine base directory for path traversal validation
+  const baseDir = options.baseDirectory ?? getBaseDirectory(proposals);
 
   try {
     for (const proposal of proposals) {
@@ -139,6 +208,17 @@ export async function validateBatchRename(
       if (proposal.status === 'no-change') continue;
       // Skip if not ready
       if (proposal.status !== 'ready') continue;
+
+      // SEC-002: Check for path traversal attacks
+      if (validatePathTraversal && baseDir && !isPathSafe(baseDir, proposal.proposedPath)) {
+        errors.push({
+          proposalId: proposal.id,
+          filePath: proposal.proposedPath,
+          code: 'PATH_TRAVERSAL',
+          message: `Security error: proposed path escapes base directory. Path "${proposal.proposedPath}" is outside "${baseDir}"`,
+        });
+        continue;
+      }
 
       // Check source file exists
       if (!existsSync(proposal.originalPath)) {

@@ -8,12 +8,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{RwLock, Semaphore};
 use lazy_static::lazy_static;
 use tauri::Emitter;
 
 // =============================================================================
-// Session Cache for Analysis Results
+// Session Cache for Analysis Results (with RwLock for better concurrency)
 // =============================================================================
 
 /// Cache entry with timestamp
@@ -24,8 +24,11 @@ struct CacheEntry {
 }
 
 /// Session cache for analysis results (in-memory, cleared on restart)
+/// Uses RwLock instead of Mutex for better read concurrency:
+/// - Multiple readers can access the cache simultaneously
+/// - Only writes require exclusive access
 lazy_static! {
-    static ref ANALYSIS_CACHE: Mutex<HashMap<String, CacheEntry>> = Mutex::new(HashMap::new());
+    static ref ANALYSIS_CACHE: RwLock<HashMap<String, CacheEntry>> = RwLock::new(HashMap::new());
     /// Semaphore to limit concurrent LLM requests (avoid overwhelming the server)
     static ref LLM_SEMAPHORE: Semaphore = Semaphore::new(3); // Max 3 concurrent requests
 }
@@ -42,9 +45,52 @@ const MAX_RETRIES: u32 = 3;
 /// Base delay for exponential backoff (in milliseconds)
 const BASE_RETRY_DELAY_MS: u64 = 1000;
 
+// =============================================================================
+// Security: HTTPS Enforcement (SEC-001)
+// =============================================================================
+
+/// Validate that OpenAI API URL uses HTTPS for secure communication
+/// Allows localhost URLs for development/self-hosted scenarios
+///
+/// # Arguments
+/// * `url` - The base URL to validate
+///
+/// # Returns
+/// * `Ok(())` if URL is secure
+/// * `Err(String)` with explanation if URL is insecure
+fn validate_openai_url_security(url: &str) -> Result<(), String> {
+    let url_lower = url.to_lowercase();
+
+    // Allow localhost/127.0.0.1 for development and self-hosted scenarios
+    if url_lower.starts_with("http://localhost")
+        || url_lower.starts_with("http://127.0.0.1")
+        || url_lower.starts_with("http://[::1]")
+    {
+        return Ok(());
+    }
+
+    // Require HTTPS for all external URLs
+    if url_lower.starts_with("https://") {
+        return Ok(());
+    }
+
+    // HTTP to external hosts is not allowed
+    if url_lower.starts_with("http://") {
+        return Err(
+            "Security error: OpenAI API URL must use HTTPS for secure communication. \
+             HTTP is only allowed for localhost connections."
+                .to_string(),
+        );
+    }
+
+    // If no protocol, assume it's missing and reject
+    Err("Invalid URL: OpenAI API URL must start with https://".to_string())
+}
+
 /// Check cache for existing result
+/// Uses read lock for better concurrency (multiple readers allowed)
 async fn get_cached_result(file_path: &str, content_hash: &str) -> Option<AiSuggestion> {
-    let cache = ANALYSIS_CACHE.lock().await;
+    let cache = ANALYSIS_CACHE.read().await;
     let key = format!("{}:{}", file_path, content_hash);
 
     if let Some(entry) = cache.get(&key) {
@@ -56,8 +102,9 @@ async fn get_cached_result(file_path: &str, content_hash: &str) -> Option<AiSugg
 }
 
 /// Store result in cache
+/// Uses write lock (exclusive access required)
 async fn cache_result(file_path: &str, content_hash: &str, suggestion: &AiSuggestion) {
-    let mut cache = ANALYSIS_CACHE.lock().await;
+    let mut cache = ANALYSIS_CACHE.write().await;
     let key = format!("{}:{}", file_path, content_hash);
 
     cache.insert(key, CacheEntry {
@@ -795,6 +842,9 @@ pub async fn check_openai_health(
     base_url: String,
     timeout_ms: u64,
 ) -> Result<HealthStatus, String> {
+    // Validate URL security (SEC-001)
+    validate_openai_url_security(&base_url)?;
+
     let client = Client::builder()
         .timeout(Duration::from_millis(timeout_ms))
         .build()
@@ -1334,6 +1384,11 @@ pub async fn analyze_files_with_llm(
     base_path: Option<String>,
 ) -> Result<BatchAnalysisResult, String> {
     let total = file_paths.len();
+
+    // Validate URL security for OpenAI provider (SEC-001)
+    if config.provider == LlmProvider::Openai {
+        validate_openai_url_security(&config.openai.base_url)?;
+    }
 
     // Emit initial progress
     let _ = window.emit("analysis-progress", AnalysisProgress {
@@ -2198,7 +2253,7 @@ async fn analyze_image_with_ollama(
 /// Command name: clear_analysis_cache (snake_case per architecture)
 #[tauri::command]
 pub async fn clear_analysis_cache() -> Result<usize, String> {
-    let mut cache = ANALYSIS_CACHE.lock().await;
+    let mut cache = ANALYSIS_CACHE.write().await;
     let count = cache.len();
     cache.clear();
     Ok(count)
@@ -2207,10 +2262,11 @@ pub async fn clear_analysis_cache() -> Result<usize, String> {
 /// Get cache statistics
 ///
 /// Returns the number of cached entries.
+/// Uses read lock (read-only operation, allows concurrent access)
 /// Command name: get_cache_stats (snake_case per architecture)
 #[tauri::command]
 pub async fn get_cache_stats() -> Result<CacheStats, String> {
-    let cache = ANALYSIS_CACHE.lock().await;
+    let cache = ANALYSIS_CACHE.read().await;
     let now = std::time::Instant::now();
 
     let valid_entries = cache.values()
@@ -2864,5 +2920,46 @@ Hope this helps!"#;
         // Test from prompt: MAX 2 levels
         assert_eq!(flatten_folder_path("documents/work/projects/client"), "documents/work");
         assert_eq!(flatten_folder_path("photos/travel/europe/2024"), "photos/travel");
+    }
+
+    // =============================================================================
+    // Security Tests (SEC-001)
+    // =============================================================================
+
+    #[test]
+    fn test_validate_openai_url_security_https() {
+        // HTTPS URLs should be allowed
+        assert!(validate_openai_url_security("https://api.openai.com").is_ok());
+        assert!(validate_openai_url_security("https://custom.openai-proxy.com/v1").is_ok());
+        assert!(validate_openai_url_security("HTTPS://API.OPENAI.COM").is_ok());
+    }
+
+    #[test]
+    fn test_validate_openai_url_security_localhost() {
+        // Localhost HTTP should be allowed for development
+        assert!(validate_openai_url_security("http://localhost:8080").is_ok());
+        assert!(validate_openai_url_security("http://localhost/v1").is_ok());
+        assert!(validate_openai_url_security("http://127.0.0.1:8080").is_ok());
+        assert!(validate_openai_url_security("http://127.0.0.1").is_ok());
+        assert!(validate_openai_url_security("http://[::1]:8080").is_ok());
+    }
+
+    #[test]
+    fn test_validate_openai_url_security_http_external_rejected() {
+        // HTTP to external hosts should be rejected
+        let result = validate_openai_url_security("http://api.openai.com");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("HTTPS"));
+
+        let result = validate_openai_url_security("http://external-host.com/api");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_openai_url_security_no_protocol() {
+        // URLs without protocol should be rejected
+        let result = validate_openai_url_security("api.openai.com");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("https://"));
     }
 }

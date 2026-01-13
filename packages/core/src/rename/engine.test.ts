@@ -12,7 +12,7 @@ import { mkdir, writeFile, rm, readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { executeBatchRename, validateBatchRename } from './engine.js';
+import { executeBatchRename, validateBatchRename, isPathSafe, getBaseDirectory } from './engine.js';
 import type { RenameProposal } from '../types/rename-proposal.js';
 
 // =============================================================================
@@ -1631,6 +1631,260 @@ describe('executeBatchRename history integration', () => {
       expect(result.data.aborted).toBe(true);
       // History should be recorded for aborted operations
       expect(result.data.historyEntryId).toBeDefined();
+    }
+  });
+});
+
+// =============================================================================
+// Path Security Tests (SEC-002)
+// =============================================================================
+
+describe('isPathSafe', () => {
+  it('returns true for paths within base directory', () => {
+    expect(isPathSafe('/home/user/photos', '/home/user/photos/image.jpg')).toBe(true);
+    expect(isPathSafe('/home/user/photos', '/home/user/photos/subdir/image.jpg')).toBe(true);
+  });
+
+  it('returns true when path equals base directory', () => {
+    expect(isPathSafe('/home/user/photos', '/home/user/photos')).toBe(true);
+  });
+
+  it('returns false for path traversal attacks', () => {
+    expect(isPathSafe('/home/user/photos', '/home/user/photos/../secrets/file.txt')).toBe(false);
+    expect(isPathSafe('/home/user/photos', '/home/user/other/file.txt')).toBe(false);
+    expect(isPathSafe('/home/user/photos', '/etc/passwd')).toBe(false);
+  });
+
+  it('returns false for sibling directory attacks', () => {
+    // Trying to write to a sibling directory
+    expect(isPathSafe('/home/user/photos', '/home/user/documents/file.txt')).toBe(false);
+  });
+
+  it('handles paths with similar prefixes correctly', () => {
+    // /base should NOT match /base-other
+    expect(isPathSafe('/home/user/photos', '/home/user/photos-backup/file.txt')).toBe(false);
+    expect(isPathSafe('/home/user/photos', '/home/user/photosystem/file.txt')).toBe(false);
+  });
+
+  it('handles relative path components correctly', () => {
+    expect(isPathSafe('/home/user/photos', '/home/user/photos/./image.jpg')).toBe(true);
+    expect(isPathSafe('/home/user/photos', '/home/user/photos/subdir/../image.jpg')).toBe(true);
+    expect(isPathSafe('/home/user/photos', '/home/user/photos/../../etc/passwd')).toBe(false);
+  });
+});
+
+describe('getBaseDirectory', () => {
+  it('returns null for empty proposals', () => {
+    expect(getBaseDirectory([])).toBe(null);
+  });
+
+  it('returns directory of single file', () => {
+    const proposals: RenameProposal[] = [
+      {
+        id: '1',
+        originalPath: '/home/user/photos/image.jpg',
+        originalName: 'image.jpg',
+        proposedName: 'renamed.jpg',
+        proposedPath: '/home/user/photos/renamed.jpg',
+        status: 'ready',
+        issues: [],
+      },
+    ];
+    expect(getBaseDirectory(proposals)).toBe('/home/user/photos');
+  });
+
+  it('finds common ancestor for files in same directory', () => {
+    const proposals: RenameProposal[] = [
+      {
+        id: '1',
+        originalPath: '/home/user/photos/a.jpg',
+        originalName: 'a.jpg',
+        proposedName: 'renamed-a.jpg',
+        proposedPath: '/home/user/photos/renamed-a.jpg',
+        status: 'ready',
+        issues: [],
+      },
+      {
+        id: '2',
+        originalPath: '/home/user/photos/b.jpg',
+        originalName: 'b.jpg',
+        proposedName: 'renamed-b.jpg',
+        proposedPath: '/home/user/photos/renamed-b.jpg',
+        status: 'ready',
+        issues: [],
+      },
+    ];
+    expect(getBaseDirectory(proposals)).toBe('/home/user/photos');
+  });
+
+  it('finds common ancestor for files in different subdirectories', () => {
+    const proposals: RenameProposal[] = [
+      {
+        id: '1',
+        originalPath: '/home/user/photos/2024/a.jpg',
+        originalName: 'a.jpg',
+        proposedName: 'renamed-a.jpg',
+        proposedPath: '/home/user/photos/2024/renamed-a.jpg',
+        status: 'ready',
+        issues: [],
+      },
+      {
+        id: '2',
+        originalPath: '/home/user/photos/2023/b.jpg',
+        originalName: 'b.jpg',
+        proposedName: 'renamed-b.jpg',
+        proposedPath: '/home/user/photos/2023/renamed-b.jpg',
+        status: 'ready',
+        issues: [],
+      },
+    ];
+    expect(getBaseDirectory(proposals)).toBe('/home/user/photos');
+  });
+});
+
+describe('validateBatchRename - PATH_TRAVERSAL', () => {
+  let testDir: string;
+
+  beforeEach(async () => {
+    testDir = join(tmpdir(), `tidy-pathsec-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(testDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(testDir, { recursive: true, force: true });
+  });
+
+  async function createTestFile(name: string): Promise<string> {
+    const path = join(testDir, name);
+    await writeFile(path, `content of ${name}`);
+    return path;
+  }
+
+  it('allows valid renames within base directory', async () => {
+    const path = await createTestFile('photo.jpg');
+
+    const proposals: RenameProposal[] = [
+      {
+        id: '1',
+        originalPath: path,
+        originalName: 'photo.jpg',
+        proposedName: 'renamed.jpg',
+        proposedPath: join(testDir, 'renamed.jpg'),
+        status: 'ready',
+        issues: [],
+      },
+    ];
+
+    const result = await validateBatchRename(proposals);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.valid).toBe(true);
+      expect(result.data.errors.filter(e => e.code === 'PATH_TRAVERSAL')).toHaveLength(0);
+    }
+  });
+
+  it('detects path traversal via ../', async () => {
+    const path = await createTestFile('photo.jpg');
+    // Attempt to write outside the test directory
+    const maliciousPath = join(testDir, '..', 'escaped.jpg');
+
+    const proposals: RenameProposal[] = [
+      {
+        id: '1',
+        originalPath: path,
+        originalName: 'photo.jpg',
+        proposedName: 'escaped.jpg',
+        proposedPath: maliciousPath,
+        status: 'ready',
+        issues: [],
+      },
+    ];
+
+    const result = await validateBatchRename(proposals);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.valid).toBe(false);
+      expect(result.data.errors).toHaveLength(1);
+      expect(result.data.errors[0].code).toBe('PATH_TRAVERSAL');
+    }
+  });
+
+  it('detects absolute path injection', async () => {
+    const path = await createTestFile('photo.jpg');
+
+    const proposals: RenameProposal[] = [
+      {
+        id: '1',
+        originalPath: path,
+        originalName: 'photo.jpg',
+        proposedName: 'malicious.jpg',
+        proposedPath: '/tmp/malicious.jpg', // Absolute path outside base
+        status: 'ready',
+        issues: [],
+      },
+    ];
+
+    const result = await validateBatchRename(proposals);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.valid).toBe(false);
+      expect(result.data.errors[0].code).toBe('PATH_TRAVERSAL');
+    }
+  });
+
+  it('can be disabled with validatePathTraversal=false', async () => {
+    const path = await createTestFile('photo.jpg');
+    const outsidePath = join(testDir, '..', 'escaped.jpg');
+
+    const proposals: RenameProposal[] = [
+      {
+        id: '1',
+        originalPath: path,
+        originalName: 'photo.jpg',
+        proposedName: 'escaped.jpg',
+        proposedPath: outsidePath,
+        status: 'ready',
+        issues: [],
+      },
+    ];
+
+    // With validation disabled, path traversal should not be checked
+    // (will fail on other checks like TARGET_EXISTS or NO_WRITE_PERMISSION)
+    const result = await validateBatchRename(proposals, { validatePathTraversal: false });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Should not have PATH_TRAVERSAL error
+      const pathTraversalErrors = result.data.errors.filter(e => e.code === 'PATH_TRAVERSAL');
+      expect(pathTraversalErrors).toHaveLength(0);
+    }
+  });
+
+  it('uses custom baseDirectory when provided', async () => {
+    const path = await createTestFile('photo.jpg');
+    // Create a parent directory to test custom base
+    const parentDir = join(testDir, '..');
+
+    const proposals: RenameProposal[] = [
+      {
+        id: '1',
+        originalPath: path,
+        originalName: 'photo.jpg',
+        proposedName: 'renamed.jpg',
+        proposedPath: join(testDir, 'renamed.jpg'),
+        status: 'ready',
+        issues: [],
+      },
+    ];
+
+    // With a more restrictive custom base that doesn't include testDir, should fail
+    const result = await validateBatchRename(proposals, {
+      baseDirectory: '/nonexistent/restricted/path',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.valid).toBe(false);
+      expect(result.data.errors[0].code).toBe('PATH_TRAVERSAL');
     }
   });
 });

@@ -7,14 +7,17 @@
  * - Actions return Result<T> types
  */
 
+import { useMemo } from "react";
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { invoke } from "@tauri-apps/api/core";
-import { toast } from "sonner";
+import { handleBackgroundError } from "@/lib/background-errors";
 import type {
   AiSuggestion,
   AppConfig,
   BatchAnalysisResult,
   BatchRenameResult,
+  ErrorResponse,
   FileInfo,
   FolderStructure,
   HealthStatus,
@@ -38,8 +41,11 @@ import {
   checkOpenAiHealth,
   listOllamaModels,
   listOpenAiModels,
+  parseError,
   recordOperation,
+  undoOperation as undoOperationTauri,
 } from "@/lib/tauri";
+import type { UndoResult } from "@/lib/tauri";
 import type { AnalysisProgress } from "@/lib/tauri";
 
 // =============================================================================
@@ -78,8 +84,9 @@ export function templateNeedsAi(templatePattern: string): boolean {
 }
 
 // Re-export types for consumers that import from the store
-export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult, ReorganizationMode, OrganizeOptions, AnalysisProgress };
-export type { CaseStyle } from "@/lib/tauri";
+export type { VersionInfo, AppConfig, Template, FolderStructure, Preferences, RenamePreview, RenameProposal, BatchRenameResult, OllamaConfig, OllamaModel, OpenAiConfig, OpenAiModel, HealthStatus, LlmProvider, AiSuggestion, BatchAnalysisResult, ReorganizationMode, OrganizeOptions, AnalysisProgress, ErrorResponse, UndoResult };
+export type { CaseStyle, ErrorCategory } from "@/lib/tauri";
+export { parseError, formatErrorForDisplay, isErrorResponse } from "@/lib/tauri";
 // WorkflowStep is already exported from the type definition above
 
 export type Result<T, E = Error> =
@@ -179,6 +186,9 @@ export interface AppState {
   deselectAll: () => void;
   applyRenames: (proposalIds?: string[]) => Promise<Result<BatchRenameResult>>;
   clearPreview: () => void;
+
+  // Undo Actions (UX-P0-004)
+  undoLastOperation: () => Promise<Result<UndoResult>>;
 
   // Folder Structure Actions
   setSelectedFolderStructure: (structureId: string | null) => void;
@@ -282,6 +292,12 @@ export const useAppStore = create<AppState>((set) => ({
       previewError: null,
       selectedProposalIds: new Set<string>(),
       lastRenameResult: null,
+      // Clear AI suggestions from previous folder (ARCH-001)
+      aiAnalysisStatus: "idle",
+      aiAnalysisProgress: null,
+      aiSuggestions: new Map<string, AiSuggestion>(),
+      aiAnalysisError: null,
+      lastAnalysisResult: null,
     });
 
     try {
@@ -298,13 +314,17 @@ export const useAppStore = create<AppState>((set) => ({
       });
       return { ok: true, data: result };
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
+      // Use structured error parsing to get message and suggestion
+      const parsedError = parseError(e);
+      const errorMessage = parsedError.suggestion
+        ? `${parsedError.message}\n${parsedError.suggestion}`
+        : parsedError.message;
       set({
         scanResult: null,
         scanStatus: "error",
         scanError: errorMessage,
       });
-      return { ok: false, error: e instanceof Error ? e : new Error(errorMessage) };
+      return { ok: false, error: new Error(parsedError.message) };
     }
   },
 
@@ -315,6 +335,19 @@ export const useAppStore = create<AppState>((set) => ({
       scanResult: null,
       scanError: null,
       workflowStep: "select",
+      // Clear all related state (ARCH-001)
+      preview: null,
+      previewStatus: "idle",
+      previewError: null,
+      selectedProposalIds: new Set<string>(),
+      lastRenameResult: null,
+      aiAnalysisStatus: "idle",
+      aiAnalysisProgress: null,
+      aiSuggestions: new Map<string, AiSuggestion>(),
+      aiAnalysisError: null,
+      lastAnalysisResult: null,
+      selectedFolderStructureId: null,
+      organizeOptions: null,
     }),
 
   reset: () => set(initialState),
@@ -350,6 +383,10 @@ export const useAppStore = create<AppState>((set) => ({
   // ==========================================================================
 
   setScanOptions: (options: Partial<ScanOptionsState>) => {
+    // Get config reference before state update to avoid race condition
+    const { config } = useAppStore.getState();
+    const shouldPersist = options.recursive !== undefined && config !== null;
+
     set((state) => ({
       scanOptions: {
         ...state.scanOptions,
@@ -358,11 +395,18 @@ export const useAppStore = create<AppState>((set) => ({
     }));
 
     // Persist recursive option to config (Story 6.5 - AC1)
-    if (options.recursive !== undefined) {
-      const { config } = useAppStore.getState();
-      if (config) {
-        useAppStore.getState().updatePreferences({ recursiveScan: options.recursive });
-      }
+    // Note: We checked config before the set() to avoid race conditions
+    if (shouldPersist) {
+      // Use Promise.resolve to make this async and non-blocking
+      // Added proper error handling to avoid silent failures (P0-002)
+      Promise.resolve().then(async () => {
+        const result = await useAppStore.getState().updatePreferences({ recursiveScan: options.recursive });
+        if (!result.ok) {
+          console.warn('Failed to persist scan options:', result.error.message);
+          // Note: We don't show a toast here as this is a background save
+          // The UI state is already updated, only persistence failed
+        }
+      });
     }
   },
 
@@ -708,13 +752,17 @@ export const useAppStore = create<AppState>((set) => ({
       });
       return { ok: true, data: preview };
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
+      // Use structured error parsing
+      const parsedError = parseError(e);
+      const errorMessage = parsedError.suggestion
+        ? `${parsedError.message}\n${parsedError.suggestion}`
+        : parsedError.message;
       set({
         preview: null,
         previewStatus: "error",
         previewError: errorMessage,
       });
-      return { ok: false, error: e instanceof Error ? e : new Error(errorMessage) };
+      return { ok: false, error: new Error(parsedError.message) };
     }
   },
 
@@ -792,24 +840,31 @@ export const useAppStore = create<AppState>((set) => ({
       });
 
       // Record operation to history for undo support (Story 9.1)
-      // Fire and forget - don't block the UI, but notify on failure
+      // Fire and forget - don't block the UI, but notify on failure (P2-003)
       if (result.summary.succeeded > 0) {
         recordOperation(result).catch((err) => {
-          console.warn("Failed to record operation to history:", err);
-          toast.warning("Could not save to undo history. Changes were applied but may not be undoable.", {
-            duration: 5000,
+          handleBackgroundError(err, {
+            operation: "record operation to history",
+            severity: "warn",
+            showToast: true,
+            toastMessage: "Could not save to undo history. Changes were applied but may not be undoable.",
+            toastDuration: 5000,
           });
         });
       }
 
       return { ok: true, data: result };
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
+      // Use structured error parsing
+      const parsedError = parseError(e);
+      const errorMessage = parsedError.suggestion
+        ? `${parsedError.message}\n${parsedError.suggestion}`
+        : parsedError.message;
       set({
         previewStatus: "error",
         previewError: errorMessage,
       });
-      return { ok: false, error: e instanceof Error ? e : new Error(errorMessage) };
+      return { ok: false, error: new Error(parsedError.message) };
     }
   },
 
@@ -821,6 +876,67 @@ export const useAppStore = create<AppState>((set) => ({
       selectedProposalIds: new Set<string>(),
       lastRenameResult: null,
     });
+  },
+
+  // ==========================================================================
+  // Undo Actions (UX-P0-004)
+  // ==========================================================================
+
+  undoLastOperation: async (): Promise<Result<UndoResult>> => {
+    const { lastRenameResult, selectedFolder, scanOptions } = useAppStore.getState();
+
+    // Check if there's a last operation to undo
+    // The entryId comes from the recorded history entry, but we need to get it
+    // For now, we'll use the most recent history entry
+    // In a future enhancement, we could store the entry ID in lastRenameResult
+    if (!lastRenameResult || lastRenameResult.summary.succeeded === 0) {
+      const error = new Error("No operation to undo");
+      return { ok: false, error };
+    }
+
+    try {
+      // Load history to get the most recent entry ID
+      const { invoke } = await import("@tauri-apps/api/core");
+      const history = await invoke<{ entries: Array<{ id: string; undone: boolean }> }>("load_history");
+
+      // Find the first non-undone entry (most recent)
+      const entryToUndo = history.entries.find((e) => !e.undone);
+      if (!entryToUndo) {
+        const error = new Error("No undoable operation found in history");
+        return { ok: false, error };
+      }
+
+      // Perform the undo
+      const result = await undoOperationTauri(entryToUndo.id);
+
+      if (result.success) {
+        // Clear the last rename result since it's been undone
+        set({ lastRenameResult: null });
+
+        // Rescan the folder to refresh the file list
+        if (selectedFolder) {
+          const scanResult = await invoke<ScanResult>("scan_folder", {
+            path: selectedFolder,
+            options: { recursive: scanOptions.recursive },
+          });
+          set({
+            scanResult,
+            scanStatus: "success",
+            scanError: null,
+            // Clear preview since files have changed
+            preview: null,
+            previewStatus: "idle",
+            previewError: null,
+            selectedProposalIds: new Set<string>(),
+          });
+        }
+      }
+
+      return { ok: true, data: result };
+    } catch (e) {
+      const parsedError = parseError(e);
+      return { ok: false, error: new Error(parsedError.message) };
+    }
   },
 
   // ==========================================================================
@@ -1164,3 +1280,135 @@ export const useAppStore = create<AppState>((set) => ({
     set({ aiAnalysisProgress: progress });
   },
 }));
+
+// =============================================================================
+// Selector Hooks (using useShallow for better performance)
+// =============================================================================
+// These hooks prevent unnecessary re-renders by using shallow comparison
+// to detect if the selected state slice has actually changed.
+
+/**
+ * Select scan-related state (status, result, error, folder)
+ * Use this instead of subscribing to the entire store when you only need scan state.
+ */
+export const useScanState = () =>
+  useAppStore(
+    useShallow((state) => ({
+      scanStatus: state.scanStatus,
+      scanResult: state.scanResult,
+      scanError: state.scanError,
+      selectedFolder: state.selectedFolder,
+      scanOptions: state.scanOptions,
+    }))
+  );
+
+/**
+ * Select preview-related state
+ * Use this for components that display or manage rename previews.
+ */
+export const usePreviewState = () =>
+  useAppStore(
+    useShallow((state) => ({
+      preview: state.preview,
+      previewStatus: state.previewStatus,
+      previewError: state.previewError,
+      selectedProposalIds: state.selectedProposalIds,
+      lastRenameResult: state.lastRenameResult,
+    }))
+  );
+
+/**
+ * Select config-related state
+ * Use this for settings panels and configuration management.
+ */
+export const useConfigState = () =>
+  useAppStore(
+    useShallow((state) => ({
+      config: state.config,
+      configStatus: state.configStatus,
+      configError: state.configError,
+    }))
+  );
+
+/**
+ * Select workflow state
+ * Use this for step indicators and navigation.
+ */
+export const useWorkflowState = () =>
+  useAppStore(
+    useShallow((state) => ({
+      workflowStep: state.workflowStep,
+    }))
+  );
+
+/**
+ * Select AI analysis state
+ * Use this for AI-related UI components.
+ */
+export const useAiAnalysisState = () =>
+  useAppStore(
+    useShallow((state) => ({
+      aiAnalysisStatus: state.aiAnalysisStatus,
+      aiAnalysisProgress: state.aiAnalysisProgress,
+      aiSuggestions: state.aiSuggestions,
+      aiAnalysisError: state.aiAnalysisError,
+      lastAnalysisResult: state.lastAnalysisResult,
+    }))
+  );
+
+/**
+ * Select LLM/AI provider state
+ * Use this for LLM configuration and health status.
+ */
+export const useLlmState = () =>
+  useAppStore(
+    useShallow((state) => ({
+      llmStatus: state.llmStatus,
+      llmModels: state.llmModels,
+      openaiModels: state.openaiModels,
+      llmError: state.llmError,
+    }))
+  );
+
+/**
+ * Select reorganization state
+ * Use this for folder organization settings.
+ */
+export const useReorganizationState = () =>
+  useAppStore(
+    useShallow((state) => ({
+      reorganizationMode: state.reorganizationMode,
+      organizeOptions: state.organizeOptions,
+      selectedFolderStructureId: state.selectedFolderStructureId,
+    }))
+  );
+
+/**
+ * Memoized selector for filtered files
+ * This is a computed value based on scanResult and scanOptions.
+ * Uses useMemo for proper React memoization (P2-001 fix).
+ */
+export const useFilteredFiles = (): FileInfo[] => {
+  const { scanResult, scanOptions } = useAppStore(
+    useShallow((state) => ({
+      scanResult: state.scanResult,
+      scanOptions: state.scanOptions,
+    }))
+  );
+
+  // Use React's useMemo for proper memoization
+  return useMemo(() => {
+    if (!scanResult) {
+      return [];
+    }
+
+    const { fileTypes } = scanOptions;
+    if (!fileTypes || fileTypes.length === 0) {
+      return scanResult.files;
+    }
+
+    return scanResult.files.filter((file) =>
+      fileTypes.includes(file.category)
+    );
+  }, [scanResult, scanOptions]);
+};

@@ -10,12 +10,13 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, usePreviewState, useAiAnalysisState, useReorganizationState } from "@/stores/app-store";
 import type { RenameStatus } from "@/lib/tauri";
 import { PreviewTable } from "@/components/preview-table/PreviewTable";
 import { ActionBar } from "@/components/action-bar/ActionBar";
 import { ConfirmRename } from "@/components/confirm-rename/ConfirmRename";
 import { RenameProgress } from "@/components/rename-progress/RenameProgress";
+import { Button } from "@/components/ui/button";
 import {
   PreviewToolbar,
   type SortField,
@@ -24,22 +25,20 @@ import {
 } from "@/components/preview-toolbar";
 
 export function PreviewPanel() {
-  const {
-    preview,
-    previewStatus,
-    previewError,
-    selectedProposalIds,
-    lastRenameResult,
-    toggleProposalSelection,
-    selectProposals,
-    selectAllReady,
-    deselectAll,
-    applyRenames,
-    clearPreview,
-    aiSuggestions,
-    reorganizationMode,
-    setWorkflowStep,
-  } = useAppStore();
+  // Use optimized selector hooks to prevent unnecessary re-renders (PERF-001)
+  const { preview, previewStatus, previewError, selectedProposalIds, lastRenameResult } = usePreviewState();
+  const { aiSuggestions } = useAiAnalysisState();
+  const { reorganizationMode } = useReorganizationState();
+
+  // Get actions separately - these don't cause re-renders
+  const toggleProposalSelection = useAppStore((s) => s.toggleProposalSelection);
+  const selectProposals = useAppStore((s) => s.selectProposals);
+  const selectAllReady = useAppStore((s) => s.selectAllReady);
+  const deselectAll = useAppStore((s) => s.deselectAll);
+  const applyRenames = useAppStore((s) => s.applyRenames);
+  const clearPreview = useAppStore((s) => s.clearPreview);
+  const setWorkflowStep = useAppStore((s) => s.setWorkflowStep);
+  const undoLastOperation = useAppStore((s) => s.undoLastOperation);
 
   // Local state
   const [collapsedGroups, setCollapsedGroups] = useState<Set<RenameStatus>>(new Set());
@@ -100,6 +99,25 @@ export function PreviewPanel() {
     setHasApplied(false);
     setWorkflowStep("select");
   }, [clearPreview, setWorkflowStep]);
+
+  // Handle undo operation (UX-P0-004)
+  const handleUndo = useCallback(async () => {
+    const result = await undoLastOperation();
+
+    if (result.ok) {
+      const { filesRestored, filesFailed } = result.data;
+      if (filesFailed === 0) {
+        toast.success(`Restored ${filesRestored} file${filesRestored !== 1 ? "s" : ""}`);
+      } else {
+        toast.warning(`Restored ${filesRestored}, ${filesFailed} could not be restored`);
+      }
+      setHasApplied(false);
+      // Stay on select step to choose a new folder or re-scan
+      setWorkflowStep("select");
+    } else {
+      toast.error(`Undo failed: ${result.error.message}`);
+    }
+  }, [undoLastOperation, setWorkflowStep]);
 
   // Handle sort change
   const handleSortChange = useCallback((field: SortField, direction: SortDirection) => {
@@ -178,15 +196,27 @@ export function PreviewPanel() {
     );
   }
 
-  // Error state
+  // Error state with recovery option (UX-P0-005)
   if (previewStatus === "error" && previewError) {
     return (
       <div
-        className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive"
+        className="rounded-lg bg-destructive/10 p-6 text-sm"
         data-testid="preview-panel-error"
       >
-        <p className="font-medium">Something went wrong</p>
-        <p className="mt-1 text-destructive/80">{previewError}</p>
+        <div className="flex items-start gap-4">
+          <div className="flex-1">
+            <p className="font-medium text-destructive">Something went wrong</p>
+            <p className="mt-1 text-destructive/80">{previewError}</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setWorkflowStep("configure")}
+            data-testid="preview-error-retry"
+          >
+            Go Back
+          </Button>
+        </div>
       </div>
     );
   }
@@ -209,6 +239,7 @@ export function PreviewPanel() {
         totalFiles={isApplying ? selectedProposalIds.size : undefined}
         result={lastRenameResult}
         onDismiss={handleDismissResult}
+        onUndo={handleUndo}
       />
 
       {/* Preview Table */}

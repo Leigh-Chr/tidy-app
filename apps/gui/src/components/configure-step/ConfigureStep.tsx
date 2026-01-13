@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/stores/app-store";
 import { TemplateSelector } from "@/components/template-selector/TemplateSelector";
 import { AiAnalysisBar } from "@/components/ai-analysis";
+import { SkippedFilesIndicator } from "@/components/skipped-files";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Template, FileInfo } from "@/lib/tauri";
@@ -219,6 +220,10 @@ export function ConfigureStep({ onContinue, onBack }: ConfigureStepProps) {
   const isAiEnabled = config.ollama.enabled;
   const isAiAvailable = llmStatus === "available";
 
+  // Get skipped files from scan result (UX-002)
+  const skippedFiles = scanResult.skipped ?? [];
+  const skippedCount = scanResult.skippedCount ?? skippedFiles.length;
+
   return (
     <div className="max-w-xl mx-auto space-y-8 animate-step-in">
       {/* File Summary */}
@@ -226,6 +231,14 @@ export function ConfigureStep({ onContinue, onBack }: ConfigureStepProps) {
         files={filteredFiles}
         folder={selectedFolder}
       />
+
+      {/* Skipped Files Indicator (UX-002) */}
+      {skippedCount > 0 && (
+        <SkippedFilesIndicator
+          skippedFiles={skippedFiles}
+          skippedCount={skippedCount}
+        />
+      )}
 
       {/* Template Selection Hero */}
       <TemplateHero

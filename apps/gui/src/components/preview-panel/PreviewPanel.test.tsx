@@ -10,13 +10,28 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PreviewPanel } from "./PreviewPanel";
-import { useAppStore, type PreviewStatus } from "@/stores/app-store";
+import type { PreviewStatus } from "@/stores/app-store";
 import type { RenamePreview, BatchRenameResult, AiSuggestion } from "@/lib/tauri";
 
-// Mock the store
-vi.mock("@/stores/app-store");
+// Mock the store and selector hooks (PERF-001)
+vi.mock("@/stores/app-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/app-store")>();
+  return {
+    ...actual,
+    useAppStore: vi.fn(),
+    usePreviewState: vi.fn(),
+    useAiAnalysisState: vi.fn(),
+    useReorganizationState: vi.fn(),
+  };
+});
+
+// Import after mock setup
+import { useAppStore, usePreviewState, useAiAnalysisState, useReorganizationState } from "@/stores/app-store";
 
 const mockUseAppStore = vi.mocked(useAppStore);
+const mockUsePreviewState = vi.mocked(usePreviewState);
+const mockUseAiAnalysisState = vi.mocked(useAiAnalysisState);
+const mockUseReorganizationState = vi.mocked(useReorganizationState);
 
 const createMockPreview = (overrides?: Partial<RenamePreview>): RenamePreview => ({
   proposals: [
@@ -112,13 +127,45 @@ describe("PreviewPanel", () => {
     mockStore.selectedProposalIds = new Set<string>();
     mockStore.lastRenameResult = null;
     mockStore.aiSuggestions = new Map();
-    mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
+
+    // Configure selector hooks (PERF-001)
+    mockUsePreviewState.mockReturnValue({
+      preview: mockStore.preview,
+      previewStatus: mockStore.previewStatus,
+      previewError: mockStore.previewError,
+      selectedProposalIds: mockStore.selectedProposalIds,
+      lastRenameResult: mockStore.lastRenameResult,
+    });
+    mockUseAiAnalysisState.mockReturnValue({
+      aiSuggestions: mockStore.aiSuggestions,
+      aiAnalysisStatus: "idle",
+      aiAnalysisProgress: null,
+      aiAnalysisError: null,
+      lastAnalysisResult: null,
+    });
+    mockUseReorganizationState.mockReturnValue({
+      reorganizationMode: mockStore.reorganizationMode,
+      organizeOptions: { folderPattern: "" },
+      selectedFolderStructureId: null,
+    });
+    mockUseAppStore.mockImplementation((selector: unknown) => {
+      if (typeof selector === "function") {
+        return (selector as (state: typeof mockStore) => unknown)(mockStore);
+      }
+      return mockStore;
+    });
   });
 
   describe("loading state", () => {
     it("renders loading spinner when generating preview", () => {
       mockStore.previewStatus = "generating";
-      mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
+      mockUsePreviewState.mockReturnValue({
+        preview: mockStore.preview,
+        previewStatus: mockStore.previewStatus,
+        previewError: mockStore.previewError,
+        selectedProposalIds: mockStore.selectedProposalIds,
+        lastRenameResult: mockStore.lastRenameResult,
+      });
 
       render(<PreviewPanel />);
 
@@ -132,7 +179,13 @@ describe("PreviewPanel", () => {
     it("renders error message when preview generation fails", () => {
       mockStore.previewStatus = "error";
       mockStore.previewError = "Failed to read file metadata";
-      mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
+      mockUsePreviewState.mockReturnValue({
+        preview: mockStore.preview,
+        previewStatus: mockStore.previewStatus,
+        previewError: mockStore.previewError,
+        selectedProposalIds: mockStore.selectedProposalIds,
+        lastRenameResult: mockStore.lastRenameResult,
+      });
 
       render(<PreviewPanel />);
 
@@ -146,7 +199,13 @@ describe("PreviewPanel", () => {
   describe("empty state", () => {
     it("renders nothing when no preview is available", () => {
       mockStore.preview = null;
-      mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
+      mockUsePreviewState.mockReturnValue({
+        preview: mockStore.preview,
+        previewStatus: mockStore.previewStatus,
+        previewError: mockStore.previewError,
+        selectedProposalIds: mockStore.selectedProposalIds,
+        lastRenameResult: mockStore.lastRenameResult,
+      });
 
       const { container } = render(<PreviewPanel />);
 
@@ -158,11 +217,16 @@ describe("PreviewPanel", () => {
     beforeEach(() => {
       mockStore.preview = createMockPreview();
       mockStore.previewStatus = "ready";
+      mockUsePreviewState.mockReturnValue({
+        preview: mockStore.preview,
+        previewStatus: mockStore.previewStatus,
+        previewError: mockStore.previewError,
+        selectedProposalIds: mockStore.selectedProposalIds,
+        lastRenameResult: mockStore.lastRenameResult,
+      });
     });
 
     it("renders preview panel with table and action bar", () => {
-      mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
-
       render(<PreviewPanel />);
 
       expect(screen.getByTestId("preview-panel")).toBeInTheDocument();
@@ -170,8 +234,6 @@ describe("PreviewPanel", () => {
     });
 
     it("renders toolbar for filtering and sorting", () => {
-      mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
-
       render(<PreviewPanel />);
 
       // Toolbar should be visible
@@ -184,7 +246,13 @@ describe("PreviewPanel", () => {
       mockStore.preview = createMockPreview();
       mockStore.previewStatus = "ready";
       mockStore.lastRenameResult = createMockRenameResult();
-      mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
+      mockUsePreviewState.mockReturnValue({
+        preview: mockStore.preview,
+        previewStatus: mockStore.previewStatus,
+        previewError: mockStore.previewError,
+        selectedProposalIds: mockStore.selectedProposalIds,
+        lastRenameResult: mockStore.lastRenameResult,
+      });
 
       render(<PreviewPanel />);
 
@@ -199,7 +267,13 @@ describe("PreviewPanel", () => {
       mockStore.preview = createMockPreview();
       mockStore.previewStatus = "ready";
       mockStore.lastRenameResult = createMockRenameResult();
-      mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
+      mockUsePreviewState.mockReturnValue({
+        preview: mockStore.preview,
+        previewStatus: mockStore.previewStatus,
+        previewError: mockStore.previewError,
+        selectedProposalIds: mockStore.selectedProposalIds,
+        lastRenameResult: mockStore.lastRenameResult,
+      });
 
       render(<PreviewPanel />);
 
@@ -217,7 +291,13 @@ describe("PreviewPanel", () => {
       mockStore.previewStatus = "applying";
       // Set some selected proposals for realistic progress display
       mockStore.selectedProposalIds = new Set(["1", "2", "3"]);
-      mockUseAppStore.mockReturnValue(mockStore as unknown as ReturnType<typeof useAppStore>);
+      mockUsePreviewState.mockReturnValue({
+        preview: mockStore.preview,
+        previewStatus: mockStore.previewStatus,
+        previewError: mockStore.previewError,
+        selectedProposalIds: mockStore.selectedProposalIds,
+        lastRenameResult: mockStore.lastRenameResult,
+      });
 
       render(<PreviewPanel />);
 

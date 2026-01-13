@@ -7,17 +7,42 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Folder, Clock, X } from "lucide-react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+// Storage constants (P3-002)
 const STORAGE_KEY = "tidy-app-recent-folders";
+/** Maximum number of recent folders to keep in history */
 const MAX_RECENT_FOLDERS = 5;
+
+// Time constants in milliseconds (P3-002)
+const MS_PER_MINUTE = 60_000;
+const MS_PER_HOUR = 3_600_000;
+const MS_PER_DAY = 86_400_000;
+
+// Display constants (P3-002)
+/** Maximum path length before truncation */
+const MAX_PATH_DISPLAY_LENGTH = 40;
+/** Minimum path parts to avoid truncation */
+const MIN_PATH_PARTS_FOR_TRUNCATION = 3;
+/** Number of days before showing absolute date */
+const DAYS_THRESHOLD_FOR_DATE = 7;
 
 export interface RecentFolder {
   path: string;
   lastUsed: number;
   fileCount?: number;
 }
+
+// Zod schema for localStorage validation (P3-003)
+const RecentFolderSchema = z.object({
+  path: z.string().min(1),
+  lastUsed: z.number().int().positive(),
+  fileCount: z.number().int().nonnegative().optional(),
+});
+
+const RecentFoldersArraySchema = z.array(RecentFolderSchema);
 
 export interface RecentFoldersProps {
   /** Callback when a folder is selected */
@@ -29,13 +54,20 @@ export interface RecentFoldersProps {
 }
 
 /**
- * Load recent folders from localStorage
+ * Load recent folders from localStorage with Zod validation (P3-003)
  */
 function loadRecentFolders(): RecentFolder[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored) as RecentFolder[];
+      const parsed: unknown = JSON.parse(stored);
+      const result = RecentFoldersArraySchema.safeParse(parsed);
+      if (result.success) {
+        return result.data;
+      }
+      // Invalid data - clear corrupted storage
+      console.warn("Invalid recent folders data in localStorage, clearing");
+      localStorage.removeItem(STORAGE_KEY);
     }
   } catch {
     // Ignore parse errors
@@ -99,11 +131,11 @@ function getFolderName(path: string): string {
 /**
  * Truncate path for display
  */
-function truncatePath(path: string, maxLength = 40): string {
+function truncatePath(path: string, maxLength = MAX_PATH_DISPLAY_LENGTH): string {
   if (path.length <= maxLength) return path;
 
   const parts = path.split(/[/\\]/);
-  if (parts.length <= 3) return path;
+  if (parts.length <= MIN_PATH_PARTS_FOR_TRUNCATION) return path;
 
   const start = parts.slice(0, 2).join("/");
   const end = parts.slice(-1)[0];
@@ -117,14 +149,14 @@ function formatRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diff = now - timestamp;
 
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
+  const minutes = Math.floor(diff / MS_PER_MINUTE);
+  const hours = Math.floor(diff / MS_PER_HOUR);
+  const days = Math.floor(diff / MS_PER_DAY);
 
   if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
+  if (hours < 1) return `${minutes}m ago`;
+  if (days < 1) return `${hours}h ago`;
+  if (days < DAYS_THRESHOLD_FOR_DATE) return `${days}d ago`;
   return new Date(timestamp).toLocaleDateString();
 }
 
