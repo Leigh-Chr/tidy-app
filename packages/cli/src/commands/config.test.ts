@@ -10,8 +10,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-// Skip config file creation tests on macOS - env-paths ignores XDG_CONFIG_HOME
-const isMacOS = process.platform === 'darwin';
+// Skip config file creation tests on non-Linux - env-paths only respects XDG_CONFIG_HOME on Linux
+const isLinux = process.platform === 'linux';
 import { execSync } from 'node:child_process';
 import { mkdir, rm, readFile, access } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
@@ -107,8 +107,8 @@ describe('tidy config commands', () => {
   });
 
   // AC5: Defaults can be exported
-  // Skip on macOS - env-paths ignores XDG_CONFIG_HOME
-  describe.skipIf(isMacOS)('config init', () => {
+  // Skip on non-Linux - env-paths only respects XDG_CONFIG_HOME on Linux
+  describe.skipIf(!isLinux)('config init', () => {
     it('creates config file with defaults', async () => {
       execSync(`node ${CLI_PATH} config init`, {
         encoding: 'utf-8',
