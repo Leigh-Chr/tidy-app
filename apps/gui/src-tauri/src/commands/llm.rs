@@ -45,10 +45,10 @@ struct CacheEntry {
     cached_at: std::time::Instant,
 }
 
-/// Session cache for analysis results (in-memory, cleared on restart)
-/// Uses RwLock instead of Mutex for better read concurrency:
-/// - Multiple readers can access the cache simultaneously
-/// - Only writes require exclusive access
+// Session cache for analysis results (in-memory, cleared on restart)
+// Uses RwLock instead of Mutex for better read concurrency:
+// - Multiple readers can access the cache simultaneously
+// - Only writes require exclusive access
 lazy_static! {
     static ref ANALYSIS_CACHE: RwLock<HashMap<String, CacheEntry>> = RwLock::new(HashMap::new());
     /// Semaphore to limit concurrent LLM requests (avoid overwhelming the server)
@@ -174,6 +174,7 @@ fn calculate_backoff_delay(attempt: u32) -> Duration {
 }
 
 /// Check if an error is retryable (rate limit or temporary server error)
+#[allow(dead_code)]
 fn is_retryable_error(status: u16) -> bool {
     status == 429 || status == 503 || status == 502 || status == 500
 }
@@ -819,6 +820,7 @@ struct OpenAiModelsResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenAiModelInfo {
     id: String,
     owned_by: String,
@@ -830,6 +832,7 @@ struct OpenAiErrorResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenAiErrorDetail {
     message: String,
     #[serde(rename = "type")]
@@ -1291,14 +1294,13 @@ fn extract_file_content(path: &str, max_chars: usize) -> Result<String, String> 
     let mut file = fs::File::open(path)
         .map_err(|e| format!("Failed to open file: {}", e))?;
 
-    let mut content = String::new();
     let mut buffer = vec![0u8; max_chars + 100];
 
     let bytes_read = file.read(&mut buffer)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
     // Try to convert to UTF-8
-    content = String::from_utf8_lossy(&buffer[..bytes_read])
+    let content: String = String::from_utf8_lossy(&buffer[..bytes_read])
         .chars()
         .take(max_chars)
         .collect();
@@ -1512,7 +1514,6 @@ pub async fn analyze_files_with_llm(
     let total_files = total;
     let progress_task = tokio::spawn(async move {
         let mut processed = 0;
-        let mut current_file = String::new();
 
         while let Some((file, completed)) = progress_rx.recv().await {
             if completed {
@@ -1526,9 +1527,8 @@ pub async fn analyze_files_with_llm(
                     phase: if processed == total_files { "complete" } else { "analyzing" }.to_string(),
                 });
             } else {
-                current_file = file.clone();
                 let _ = window_clone.emit("analysis-progress", AnalysisProgress {
-                    current_file,
+                    current_file: file.clone(),
                     processed,
                     total: total_files,
                     percent: ((processed as f64 / total_files as f64) * 100.0) as u8,

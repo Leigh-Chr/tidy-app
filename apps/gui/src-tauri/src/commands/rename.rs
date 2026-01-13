@@ -23,6 +23,7 @@ use super::security::{validate_rename_path, SecurityError};
 // =============================================================================
 
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub enum RenameError {
     #[error("Preview generation failed: {0}")]
     PreviewFailed(String),
@@ -122,6 +123,7 @@ pub enum ReorganizationMode {
 #[derive(Debug, Clone, Deserialize, Default, TS)]
 #[ts(export, export_to = "bindings/")]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct OrganizeOptions {
     /// Base destination directory for organized files.
     #[serde(default)]
@@ -552,6 +554,7 @@ fn apply_compiled_pattern_with_boundary_handling(input: &str, re: &Regex) -> Str
 /// Apply a pattern with boundary-aware replacement.
 /// - If pattern match is in the middle (has separators on both sides), keep one separator
 /// - If pattern match is at an edge (start or end), remove entirely
+#[allow(dead_code)]
 fn apply_pattern_with_boundary_handling(input: &str, pattern: &str) -> String {
     let Ok(re) = regex_lite::Regex::new(pattern) else {
         return input.to_string();

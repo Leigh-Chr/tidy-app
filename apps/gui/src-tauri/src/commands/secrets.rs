@@ -122,6 +122,7 @@ pub fn decrypt_secret(encrypted: &str) -> Result<String, SecretError> {
 }
 
 /// Check if a string looks like an encrypted secret (base64 with correct length)
+#[allow(dead_code)]
 pub fn is_encrypted(value: &str) -> bool {
     if value.is_empty() {
         return false;
