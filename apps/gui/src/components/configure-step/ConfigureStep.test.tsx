@@ -125,14 +125,27 @@ const createMockStore = (overrides = {}) => ({
   setScanOptions: mockSetScanOptions,
   generatePreview: mockGeneratePreview,
   llmStatus: "unavailable" as const,
+  setReorganizationMode: vi.fn(),
+  setOrganizeOptions: vi.fn(),
+  setSelectedFolderStructure: vi.fn(),
+  ...overrides,
+});
+
+// Default mock reorganization state
+const createMockReorganizationState = (overrides = {}) => ({
+  reorganizationMode: "rename-only" as const,
+  organizeOptions: null,
+  selectedFolderStructureId: null,
   ...overrides,
 });
 
 let mockStoreState = createMockStore();
+let mockReorganizationState = createMockReorganizationState();
 
 // Mock the store
 vi.mock("@/stores/app-store", () => ({
   useAppStore: vi.fn(() => mockStoreState),
+  useReorganizationState: vi.fn(() => mockReorganizationState),
 }));
 
 // Mock child components to simplify testing
@@ -170,6 +183,12 @@ vi.mock("@/components/skipped-files", () => ({
   ),
 }));
 
+vi.mock("@/components/reorganization-mode", () => ({
+  ReorganizationModeSelector: () => (
+    <div data-testid="reorganization-mode-selector">Reorganization Mode Selector</div>
+  ),
+}));
+
 describe("ConfigureStep", () => {
   const mockOnContinue = vi.fn();
   const mockOnBack = vi.fn();
@@ -180,6 +199,7 @@ describe("ConfigureStep", () => {
     mockGeneratePreview.mockResolvedValue(undefined);
     // Reset to default store state
     mockStoreState = createMockStore();
+    mockReorganizationState = createMockReorganizationState();
   });
 
   afterEach(() => {

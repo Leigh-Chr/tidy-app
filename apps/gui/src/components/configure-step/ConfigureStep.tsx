@@ -7,20 +7,21 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { ArrowRight, ChevronDown, ChevronUp, Settings2, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronUp, Settings2, Sparkles, FolderTree } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, useReorganizationState } from "@/stores/app-store";
 import { TemplateSelector } from "@/components/template-selector/TemplateSelector";
+import { ReorganizationModeSelector } from "@/components/reorganization-mode";
 import { AiAnalysisBar } from "@/components/ai-analysis";
 import { SkippedFilesIndicator } from "@/components/skipped-files";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Template, FileInfo } from "@/lib/tauri";
+import type { Template, FileInfo, ReorganizationMode, OrganizeOptions } from "@/lib/tauri";
 
 /**
  * Hero template card with live preview
@@ -160,7 +161,12 @@ export function ConfigureStep({ onContinue, onBack }: ConfigureStepProps) {
     setScanOptions,
     generatePreview,
     llmStatus,
+    setReorganizationMode,
+    setOrganizeOptions,
+    setSelectedFolderStructure,
   } = useAppStore();
+
+  const { reorganizationMode, organizeOptions, selectedFolderStructureId } = useReorganizationState();
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -207,6 +213,41 @@ export function ConfigureStep({ onContinue, onBack }: ConfigureStepProps) {
       // Note: User would need to re-scan to apply this change
     },
     [setScanOptions]
+  );
+
+  const handleModeChange = useCallback(
+    (mode: ReorganizationMode) => {
+      setReorganizationMode(mode);
+    },
+    [setReorganizationMode]
+  );
+
+  const handleOrganizeOptionsChange = useCallback(
+    (options: OrganizeOptions) => {
+      setOrganizeOptions(options);
+    },
+    [setOrganizeOptions]
+  );
+
+  const handleStructureSelect = useCallback(
+    (structureId: string | null) => {
+      setSelectedFolderStructure(structureId);
+      if (structureId && config) {
+        const structure = config.folderStructures.find((s) => s.id === structureId);
+        if (structure) {
+          setReorganizationMode("organize");
+          setOrganizeOptions({
+            folderPattern: structure.pattern,
+            preserveContext: organizeOptions?.preserveContext ?? false,
+            contextDepth: organizeOptions?.contextDepth ?? 1,
+            destinationDirectory: selectedFolder ?? undefined,
+          });
+        }
+      } else {
+        setReorganizationMode("rename-only");
+      }
+    },
+    [config, setSelectedFolderStructure, setReorganizationMode, setOrganizeOptions, organizeOptions, selectedFolder]
   );
 
   if (!config || !scanResult || !selectedFolder) {
@@ -265,6 +306,32 @@ export function ConfigureStep({ onContinue, onBack }: ConfigureStepProps) {
         </CollapsibleTrigger>
 
         <CollapsibleContent className="space-y-4 pt-4">
+          {/* Folder Organization */}
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <FolderTree className={cn(
+                  "h-4 w-4",
+                  reorganizationMode === "organize" ? "text-blue-500" : "text-muted-foreground"
+                )} />
+                <span className="text-sm font-medium">Folder Organization</span>
+                {reorganizationMode === "organize" && (
+                  <Badge variant="secondary" className="text-xs">active</Badge>
+                )}
+              </div>
+              <ReorganizationModeSelector
+                mode={reorganizationMode}
+                onModeChange={handleModeChange}
+                organizeOptions={organizeOptions ?? undefined}
+                onOrganizeOptionsChange={handleOrganizeOptionsChange}
+                folderStructures={config.folderStructures}
+                selectedStructureId={selectedFolderStructureId}
+                onStructureSelect={handleStructureSelect}
+                baseDirectory={selectedFolder}
+              />
+            </CardContent>
+          </Card>
+
           {/* Scan Options */}
           <Card>
             <CardContent className="pt-4 space-y-4">
