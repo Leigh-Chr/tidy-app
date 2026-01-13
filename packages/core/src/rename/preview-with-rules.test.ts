@@ -2,6 +2,7 @@
  * @fileoverview Tests for preview-with-rules - Story 7.3
  */
 
+import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   generatePreviewWithRules,
@@ -657,13 +658,14 @@ describe('generatePreviewWithRules', () => {
         },
       ];
 
+      const baseDir = path.join('/home', 'user', 'organized');
       const options: GeneratePreviewWithRulesOptions = {
         metadataRules,
         filenameRules: [],
         templates,
         defaultTemplateId: 'default-t',
         folderStructures,
-        baseDirectory: '/home/user/organized',
+        baseDirectory: baseDir,
       };
 
       const result = generatePreviewWithRules([file], metadataMap, options);
@@ -672,7 +674,8 @@ describe('generatePreviewWithRules', () => {
       if (result.ok) {
         expect(result.data.proposals).toHaveLength(1);
         const proposal = result.data.proposals[0]!;
-        expect(proposal.proposedPath).toContain('/home/user/organized');
+        // Use normalized path for cross-platform comparison
+        expect(proposal.proposedPath).toContain(baseDir);
       }
     });
 

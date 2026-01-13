@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   previewFile,
@@ -134,13 +135,15 @@ describe('previewFile', () => {
     });
 
     it('preserves directory in proposed path', () => {
-      const file = createMockFile({ path: '/home/user/photos/vacation.jpg' });
+      const inputPath = path.join('/home', 'user', 'photos', 'vacation.jpg');
+      const file = createMockFile({ path: inputPath });
       const metadata = { imageMetadata: createMockImageMetadata() };
       const result = previewFile(file, '{year}_{original}', metadata, { caseNormalization: 'none' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.data.proposedPath).toBe('/home/user/photos/2025_vacation.jpg');
+        const expectedPath = path.join('/home', 'user', 'photos', '2025_vacation.jpg');
+        expect(result.data.proposedPath).toBe(expectedPath);
       }
     });
   });

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFile, writeFile, mkdir, rename, access, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import {
   loadHistory,
   saveHistory,
@@ -210,7 +210,9 @@ describe('history storage', () => {
       const store = createEmptyHistoryStore();
       await saveHistory(store);
 
-      expect(mockedMkdir).toHaveBeenCalledWith('/mock/config/tidy-app', { recursive: true });
+      // Use same path calculation as implementation for cross-platform compatibility
+      const expectedConfigDir = dirname(join('/mock/config/tidy-app', HISTORY_FILENAME));
+      expect(mockedMkdir).toHaveBeenCalledWith(expectedConfigDir, { recursive: true });
     });
 
     it('should format JSON with 2-space indentation', async () => {
