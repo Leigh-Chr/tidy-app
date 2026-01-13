@@ -19,6 +19,10 @@ import { cn } from "@/lib/utils";
 
 const ONBOARDING_KEY = "tidy-app-onboarding-completed";
 
+// Constants (P3-002)
+/** Delay before showing onboarding to let the app render first */
+const ONBOARDING_DELAY_MS = 500;
+
 interface OnboardingStep {
   icon: React.ReactNode;
   title: string;
@@ -77,7 +81,7 @@ export function Onboarding({ forceShow = false, onComplete }: OnboardingProps) {
     const completed = localStorage.getItem(ONBOARDING_KEY);
     if (!completed) {
       // Small delay to let the app render first
-      const timer = setTimeout(() => setOpen(true), 500);
+      const timer = setTimeout(() => setOpen(true), ONBOARDING_DELAY_MS);
       return () => clearTimeout(timer);
     }
   }, [forceShow]);

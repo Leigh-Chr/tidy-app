@@ -5,10 +5,31 @@
 import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 
+// QUAL-P2-003: Add proper TypeScript declaration for React's act() environment flag
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+
 // Configure React 19 act() environment
 // This suppresses the "current testing environment is not configured to support act(...)" warning
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Handle unhandled promise rejections from Tauri API mocks
+// These occur when dynamic imports of Tauri APIs happen in components
+// but the actual Tauri runtime isn't available in the test environment
+process.on("unhandledRejection", (reason: unknown) => {
+  // Suppress Tauri-specific errors that don't affect test results
+  const errorMessage = String(reason);
+  if (
+    errorMessage.includes("transformCallback") ||
+    errorMessage.includes("@tauri-apps")
+  ) {
+    // Silently ignore Tauri mock errors - these don't affect test assertions
+    return;
+  }
+  // Re-throw other unhandled rejections
+  throw reason;
+});
 
 // Mock scrollIntoView for Radix UI components (not implemented in jsdom)
 Element.prototype.scrollIntoView = vi.fn();

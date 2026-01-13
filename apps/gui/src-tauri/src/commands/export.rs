@@ -1,14 +1,31 @@
 // Export functionality for tidy-app GUI
 // Command names use snake_case per architecture requirements
 //
-// Provides export of scan results and rename previews to JSON files.
+// Provides export of scan results and rename previews to JSON and CSV files.
 
 use serde::{Deserialize, Serialize};
 use std::fs;
 use thiserror::Error;
+use ts_rs::TS;
 
 use crate::commands::rename::{PreviewSummary, RenamePreview, RenameProposal};
 use crate::commands::scanner::{FileCategory, FileInfo};
+
+// =============================================================================
+// Export Format Types
+// =============================================================================
+
+/// Supported export file formats (FEAT-003)
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Default)]
+#[ts(export, export_to = "bindings/")]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormat {
+    /// JSON format (default) - full structured data
+    #[default]
+    Json,
+    /// CSV format - tabular data for spreadsheets
+    Csv,
+}
 
 // =============================================================================
 // Error Types
@@ -26,14 +43,8 @@ pub enum ExportError {
     IoError(#[from] std::io::Error),
 }
 
-impl Serialize for ExportError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
+// Use macro for Serialize implementation (QUAL-001)
+crate::impl_serialize_as_string!(ExportError);
 
 // =============================================================================
 // Export Types (matching CLI JSON output)
@@ -85,6 +96,9 @@ pub struct ExportInput {
     pub folder: String,
     pub files: Vec<FileInfo>,
     pub preview: Option<RenamePreview>,
+    /// Export format (default: JSON)
+    #[serde(default)]
+    pub format: ExportFormat,
 }
 
 /// Result of save dialog
@@ -124,14 +138,70 @@ fn current_timestamp() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
+/// Escape a field for CSV (double quotes and wrap if needed)
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// Generate CSV content for files (FEAT-003)
+fn generate_files_csv(files: &[FileInfo]) -> String {
+    let mut csv = String::new();
+
+    // Header
+    csv.push_str("Path,Name,Extension,Size (bytes),Category,Created,Modified\n");
+
+    // Data rows
+    for file in files {
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{}\n",
+            csv_escape(&file.path),
+            csv_escape(&file.full_name),
+            csv_escape(&file.extension),
+            file.size,
+            csv_escape(&format!("{:?}", file.category)),
+            csv_escape(&file.created_at.to_rfc3339()),
+            csv_escape(&file.modified_at.to_rfc3339()),
+        ));
+    }
+
+    csv
+}
+
+/// Generate CSV content for rename preview (FEAT-003)
+fn generate_preview_csv(preview: &RenamePreview) -> String {
+    let mut csv = String::new();
+
+    // Header
+    csv.push_str("Original Path,Original Name,New Name,New Path,Status,Folder Move\n");
+
+    // Data rows
+    for proposal in &preview.proposals {
+        csv.push_str(&format!(
+            "{},{},{},{},{},{}\n",
+            csv_escape(&proposal.original_path),
+            csv_escape(&proposal.original_name),
+            csv_escape(&proposal.proposed_name),
+            csv_escape(&proposal.proposed_path),
+            csv_escape(&format!("{:?}", proposal.status)),
+            proposal.is_folder_move,
+        ));
+    }
+
+    csv
+}
+
 // =============================================================================
 // Tauri Commands
 // =============================================================================
 
-/// Export scan results and preview to a JSON file
+/// Export scan results and preview to a file (JSON or CSV)
 ///
 /// Opens native file save dialog and writes export data.
-/// Matches CLI --format json output structure.
+/// Supports JSON (full structured data) and CSV (tabular) formats.
 ///
 /// Command name: export_results (snake_case per architecture)
 #[tauri::command]
@@ -142,32 +212,52 @@ pub async fn export_results(
     use tauri_plugin_dialog::DialogExt;
     use tokio::sync::oneshot;
 
-    // Build export data
-    let export_data = ExportData {
-        scan_result: ExportScanResult {
-            folder: input.folder.clone(),
-            files: input.files.clone(),
-            statistics: compute_statistics(&input.files),
-            scanned_at: current_timestamp(),
-        },
-        preview: input.preview.map(|p| ExportPreview {
-            proposals: p.proposals,
-            summary: p.summary,
-            template_used: p.template_used,
-        }),
-        exported_at: current_timestamp(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+    // Generate content based on format
+    let (content, default_filename, file_filter) = match input.format {
+        ExportFormat::Json => {
+            // Build export data
+            let export_data = ExportData {
+                scan_result: ExportScanResult {
+                    folder: input.folder.clone(),
+                    files: input.files.clone(),
+                    statistics: compute_statistics(&input.files),
+                    scanned_at: current_timestamp(),
+                },
+                preview: input.preview.map(|p| ExportPreview {
+                    proposals: p.proposals,
+                    summary: p.summary,
+                    template_used: p.template_used,
+                }),
+                exported_at: current_timestamp(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            };
+
+            let json_content = serde_json::to_string_pretty(&export_data)
+                .map_err(|e| ExportError::SerializeError(e.to_string()))?;
+
+            let filename = format!(
+                "tidy-export-{}.json",
+                chrono::Utc::now().format("%Y%m%d-%H%M%S")
+            );
+
+            (json_content, filename, ("JSON", vec!["json"]))
+        }
+        ExportFormat::Csv => {
+            // Generate CSV based on whether preview exists
+            let csv_content = if let Some(ref preview) = input.preview {
+                generate_preview_csv(preview)
+            } else {
+                generate_files_csv(&input.files)
+            };
+
+            let filename = format!(
+                "tidy-export-{}.csv",
+                chrono::Utc::now().format("%Y%m%d-%H%M%S")
+            );
+
+            (csv_content, filename, ("CSV", vec!["csv"]))
+        }
     };
-
-    // Serialize to pretty JSON
-    let json_content = serde_json::to_string_pretty(&export_data)
-        .map_err(|e| ExportError::SerializeError(e.to_string()))?;
-
-    // Generate default filename
-    let default_filename = format!(
-        "tidy-export-{}.json",
-        chrono::Utc::now().format("%Y%m%d-%H%M%S")
-    );
 
     // Use async oneshot channel to avoid blocking async runtime
     let (tx, rx) = oneshot::channel();
@@ -177,7 +267,7 @@ pub async fn export_results(
         .dialog()
         .file()
         .set_file_name(&default_filename)
-        .add_filter("JSON", &["json"])
+        .add_filter(file_filter.0, &file_filter.1)
         .add_filter("All Files", &["*"])
         .save_file(move |file_path| {
             let _ = tx.send(file_path);
@@ -195,7 +285,7 @@ pub async fn export_results(
     };
 
     // Write to file
-    fs::write(&path, &json_content).map_err(|e| {
+    fs::write(&path, &content).map_err(|e| {
         ExportError::WriteError(format!("Failed to write {}: {}", path.display(), e))
     })?;
 
@@ -283,5 +373,48 @@ mod tests {
         let error = ExportError::Cancelled;
         let json = serde_json::to_string(&error).unwrap();
         assert_eq!(json, "\"Export cancelled by user\"");
+    }
+
+    #[test]
+    fn test_csv_escape() {
+        // Normal string - no escaping
+        assert_eq!(csv_escape("hello"), "hello");
+
+        // String with comma - quoted
+        assert_eq!(csv_escape("hello,world"), "\"hello,world\"");
+
+        // String with quotes - escaped and quoted
+        assert_eq!(csv_escape("say \"hello\""), "\"say \"\"hello\"\"\"");
+
+        // String with newline - quoted
+        assert_eq!(csv_escape("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn test_generate_files_csv() {
+        let files = vec![
+            mock_file("image1.jpg", FileCategory::Image, 1000),
+            mock_file("doc.pdf", FileCategory::Document, 5000),
+        ];
+
+        let csv = generate_files_csv(&files);
+
+        // Check header
+        assert!(csv.starts_with("Path,Name,Extension,Size (bytes),Category,Created,Modified\n"));
+
+        // Check data rows exist
+        assert!(csv.contains("/test/image1.jpg"));
+        assert!(csv.contains("image1.jpg"));
+        assert!(csv.contains("/test/doc.pdf"));
+        assert!(csv.contains("doc.pdf"));
+        assert!(csv.contains("1000"));
+        assert!(csv.contains("5000"));
+    }
+
+    #[test]
+    fn test_export_format_default() {
+        // Default should be JSON
+        let format: ExportFormat = Default::default();
+        matches!(format, ExportFormat::Json);
     }
 }

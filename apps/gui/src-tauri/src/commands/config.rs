@@ -3,11 +3,41 @@
 //
 // Implements config loading/saving compatible with @tidy-app/core schema
 
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::RwLock;
 use thiserror::Error;
 use uuid::Uuid;
+
+// =============================================================================
+// Config Cache (PERF-007)
+// =============================================================================
+
+lazy_static! {
+    /// In-memory config cache to avoid disk reads on every get_config() call
+    static ref CONFIG_CACHE: RwLock<Option<AppConfig>> = RwLock::new(None);
+}
+
+/// Clear the config cache (used after saves and resets)
+fn invalidate_cache() {
+    if let Ok(mut cache) = CONFIG_CACHE.write() {
+        *cache = None;
+    }
+}
+
+/// Get cached config or None if cache is empty
+fn get_cached_config() -> Option<AppConfig> {
+    CONFIG_CACHE.read().ok().and_then(|cache| cache.clone())
+}
+
+/// Store config in cache
+fn cache_config(config: &AppConfig) {
+    if let Ok(mut cache) = CONFIG_CACHE.write() {
+        *cache = Some(config.clone());
+    }
+}
 
 // =============================================================================
 // Error Types
@@ -25,14 +55,8 @@ pub enum ConfigError {
     IoError(#[from] std::io::Error),
 }
 
-impl Serialize for ConfigError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
+// Use macro for Serialize implementation (QUAL-001)
+crate::impl_serialize_as_string!(ConfigError);
 
 // =============================================================================
 // Config Types (matching @tidy-app/core schema)
@@ -558,6 +582,7 @@ fn get_config_path() -> PathBuf {
 
 /// Load application configuration from disk
 ///
+/// Uses in-memory cache to avoid disk reads on every call (PERF-007).
 /// Returns default configuration if:
 /// - Config file doesn't exist
 /// - Config file is invalid JSON
@@ -566,11 +591,18 @@ fn get_config_path() -> PathBuf {
 /// Command name: get_config (snake_case per architecture)
 #[tauri::command]
 pub async fn get_config() -> Result<AppConfig, ConfigError> {
+    // Check cache first (PERF-007)
+    if let Some(cached) = get_cached_config() {
+        return Ok(cached);
+    }
+
     let config_path = get_config_path();
 
     // Return defaults if file doesn't exist
     if !config_path.exists() {
-        return Ok(default_config());
+        let config = default_config();
+        cache_config(&config);
+        return Ok(config);
     }
 
     // Read file contents
@@ -580,7 +612,9 @@ pub async fn get_config() -> Result<AppConfig, ConfigError> {
 
     // Handle empty file
     if content.trim().is_empty() {
-        return Ok(default_config());
+        let config = default_config();
+        cache_config(&config);
+        return Ok(config);
     }
 
     // Parse JSON
@@ -607,13 +641,17 @@ pub async fn get_config() -> Result<AppConfig, ConfigError> {
         }
     }
 
+    // Store in cache for subsequent calls
+    cache_config(&config);
+
     Ok(config)
 }
 
 /// Save application configuration to disk
 ///
 /// Creates config directory if it doesn't exist.
-/// Validates config before saving.
+/// Sets restrictive file permissions (0600) on Unix systems (SEC-003).
+/// Updates the in-memory cache after saving.
 ///
 /// Command name: save_config (snake_case per architecture)
 #[tauri::command]
@@ -630,6 +668,14 @@ pub async fn save_config(config: AppConfig) -> Result<(), ConfigError> {
                 e
             ))
         })?;
+
+        // Set directory permissions on Unix (SEC-003)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::Permissions::from_mode(0o700);
+            let _ = fs::set_permissions(&config_dir, perms);
+        }
     }
 
     // Serialize with pretty formatting
@@ -637,9 +683,20 @@ pub async fn save_config(config: AppConfig) -> Result<(), ConfigError> {
         .map_err(|e| ConfigError::WriteError(format!("Failed to serialize config: {}", e)))?;
 
     // Write to file
-    fs::write(&config_path, content).map_err(|e| {
+    fs::write(&config_path, &content).map_err(|e| {
         ConfigError::WriteError(format!("Failed to write {}: {}", config_path.display(), e))
     })?;
+
+    // Set file permissions on Unix (SEC-003: 0600 = owner read/write only)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = fs::Permissions::from_mode(0o600);
+        let _ = fs::set_permissions(&config_path, perms);
+    }
+
+    // Update cache with saved config (PERF-007)
+    cache_config(&config);
 
     Ok(())
 }
@@ -647,6 +704,7 @@ pub async fn save_config(config: AppConfig) -> Result<(), ConfigError> {
 /// Reset configuration to defaults
 ///
 /// Deletes existing config file and returns default configuration.
+/// Invalidates the in-memory cache.
 ///
 /// Command name: reset_config (snake_case per architecture)
 #[tauri::command]
@@ -664,7 +722,12 @@ pub async fn reset_config() -> Result<AppConfig, ConfigError> {
         })?;
     }
 
-    Ok(default_config())
+    // Invalidate cache (PERF-007)
+    invalidate_cache();
+
+    let config = default_config();
+    cache_config(&config);
+    Ok(config)
 }
 
 // =============================================================================

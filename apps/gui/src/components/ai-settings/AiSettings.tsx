@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, CheckCircle, XCircle, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,45 @@ import {
 } from "@/components/ui/select";
 import { useAppStore, type OllamaConfig } from "@/stores/app-store";
 import type { FileTypePreset, LlmProvider, OfflineMode } from "@/lib/tauri";
+
+// =============================================================================
+// Input Validation Schemas (P2-006)
+// =============================================================================
+
+/**
+ * Schema for validating Ollama base URL.
+ * Must be a valid HTTP/HTTPS URL.
+ */
+const baseUrlSchema = z
+  .string()
+  .min(1, "URL is required")
+  .refine(
+    (url) => {
+      try {
+        const parsed = new URL(url);
+        return ["http:", "https:"].includes(parsed.protocol);
+      } catch {
+        return false;
+      }
+    },
+    { message: "Must be a valid HTTP or HTTPS URL" }
+  );
+
+/**
+ * Schema for validating OpenAI API key.
+ * OpenAI keys start with "sk-" and are typically 51 characters (but can vary for org keys).
+ */
+const apiKeySchema = z
+  .string()
+  .min(1, "API key is required")
+  .refine(
+    (key) => key.startsWith("sk-") || key.startsWith("sk-proj-"),
+    { message: "API key must start with 'sk-' or 'sk-proj-'" }
+  )
+  .refine(
+    (key) => key.length >= 20,
+    { message: "API key appears to be too short" }
+  );
 
 /**
  * Known vision-capable model prefixes (for Ollama)
@@ -78,6 +118,9 @@ export function AiSettings({ config }: AiSettingsProps) {
   const [localBaseUrl, setLocalBaseUrl] = useState(config.baseUrl);
   const [localApiKey, setLocalApiKey] = useState(config.openai?.apiKey || "");
   const [showApiKey, setShowApiKey] = useState(false);
+  // Validation error state (P2-006)
+  const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const isSaving = configStatus === "saving";
   const isChecking = llmStatus === "checking";
   const isOpenAi = config.provider === "openai";
@@ -169,6 +212,14 @@ export function AiSettings({ config }: AiSettingsProps) {
   };
 
   const handleBaseUrlBlur = async () => {
+    // Validate before saving (P2-006)
+    const validation = baseUrlSchema.safeParse(localBaseUrl);
+    if (!validation.success) {
+      setBaseUrlError(validation.error.issues[0].message);
+      return;
+    }
+    setBaseUrlError(null);
+
     if (localBaseUrl !== config.baseUrl) {
       const result = await updateOllamaConfig({ baseUrl: localBaseUrl });
       if (result.ok) {
@@ -180,6 +231,14 @@ export function AiSettings({ config }: AiSettingsProps) {
   };
 
   const handleApiKeyBlur = async () => {
+    // Validate before saving (P2-006)
+    const validation = apiKeySchema.safeParse(localApiKey);
+    if (!validation.success) {
+      setApiKeyError(validation.error.issues[0].message);
+      return;
+    }
+    setApiKeyError(null);
+
     if (localApiKey !== config.openai?.apiKey) {
       const result = await updateOllamaConfig({
         openai: { ...config.openai, apiKey: localApiKey },
@@ -190,6 +249,17 @@ export function AiSettings({ config }: AiSettingsProps) {
         toast.error("Failed to save API key");
       }
     }
+  };
+
+  // Clear validation errors when input changes
+  const handleBaseUrlChange = (value: string) => {
+    setLocalBaseUrl(value);
+    if (baseUrlError) setBaseUrlError(null);
+  };
+
+  const handleApiKeyChange = (value: string) => {
+    setLocalApiKey(value);
+    if (apiKeyError) setApiKeyError(null);
   };
 
   const handleModelChange = async (
@@ -334,16 +404,22 @@ export function AiSettings({ config }: AiSettingsProps) {
               <Input
                 id="base-url"
                 value={localBaseUrl}
-                onChange={(e) => setLocalBaseUrl(e.target.value)}
+                onChange={(e) => handleBaseUrlChange(e.target.value)}
                 onBlur={handleBaseUrlBlur}
                 placeholder="http://localhost:11434"
                 disabled={isSaving}
                 data-testid="ollama-base-url"
+                aria-invalid={!!baseUrlError}
+                className={baseUrlError ? "border-destructive" : ""}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Default: http://localhost:11434
-            </p>
+            {baseUrlError ? (
+              <p className="text-xs text-destructive">{baseUrlError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Default: http://localhost:11434
+              </p>
+            )}
           </div>
 
           {/* Model Selection */}
@@ -412,11 +488,13 @@ export function AiSettings({ config }: AiSettingsProps) {
                   id="openai-api-key"
                   type={showApiKey ? "text" : "password"}
                   value={localApiKey}
-                  onChange={(e) => setLocalApiKey(e.target.value)}
+                  onChange={(e) => handleApiKeyChange(e.target.value)}
                   onBlur={handleApiKeyBlur}
                   placeholder="sk-..."
                   disabled={isSaving}
                   data-testid="openai-api-key"
+                  aria-invalid={!!apiKeyError}
+                  className={apiKeyError ? "border-destructive pr-10" : "pr-10"}
                 />
                 <Button
                   type="button"
@@ -433,17 +511,21 @@ export function AiSettings({ config }: AiSettingsProps) {
                 </Button>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Get your API key from{" "}
-              <a
-                href="https://platform.openai.com/api-keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                OpenAI Platform
-              </a>
-            </p>
+            {apiKeyError ? (
+              <p className="text-xs text-destructive">{apiKeyError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Get your API key from{" "}
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  OpenAI Platform
+                </a>
+              </p>
+            )}
           </div>
 
           {/* OpenAI Model Selection */}

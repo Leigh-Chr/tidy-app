@@ -46,6 +46,10 @@ export interface PreviewToolbarProps {
   className?: string;
 }
 
+// Constants (P3-002)
+/** Debounce delay for search input to prevent excessive filtering */
+const SEARCH_DEBOUNCE_MS = 150;
+
 const SORT_OPTIONS: Array<{ value: SortField; label: string }> = [
   { value: "name", label: "Name" },
   { value: "status", label: "Status" },
@@ -86,7 +90,7 @@ export function PreviewToolbar({
     (query: string) => {
       onSearchChange(query);
     },
-    150
+    SEARCH_DEBOUNCE_MS
   );
 
   const handleSearchChange = (value: string) => {

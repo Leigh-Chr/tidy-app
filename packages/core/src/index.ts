@@ -741,8 +741,6 @@ export type {
 export {
   // Schemas
   ollamaErrorCodeSchema,
-  ollamaConfigSchema as ollamaConfigSchemaLlm,
-  ollamaModelsConfigSchema as ollamaModelsConfigSchemaLlm,
   healthStatusSchema,
   ollamaModelDetailsSchema,
   ollamaModelSchema,
@@ -769,7 +767,8 @@ export {
   getModelsSummary,
 } from './llm/index.js';
 
-// Ollama config types from config module (Story 10.1)
+// Ollama config schemas - canonical export from config module (Story 10.1)
+// Note: These schemas are the same in both config and llm modules
 export {
   ollamaConfigSchema,
   ollamaModelsConfigSchema,

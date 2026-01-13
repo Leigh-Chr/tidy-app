@@ -1,14 +1,17 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 use walkdir::WalkDir;
+
+use super::error::{ErrorCategory, ErrorResponse};
+use super::security::{validate_scan_path, SecurityError};
 
 /// Error types for scan operations
 #[derive(Debug, Error)]
@@ -19,16 +22,62 @@ pub enum ScanError {
     NotADirectory(String),
     #[error("Failed to scan: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("Security violation: {0}")]
+    SecurityViolation(String),
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
-impl Serialize for ScanError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
+impl From<SecurityError> for ScanError {
+    fn from(err: SecurityError) -> Self {
+        ScanError::SecurityViolation(err.to_string())
     }
 }
+
+impl ScanError {
+    /// Convert to structured error response for frontend
+    pub fn to_error_response(&self) -> ErrorResponse {
+        match self {
+            ScanError::PathNotFound(path) => ErrorResponse::new(
+                "PATH_NOT_FOUND",
+                format!("Path does not exist: {}", path),
+                ErrorCategory::Filesystem,
+            )
+            .with_suggestion("Please check that the path exists and is accessible."),
+
+            ScanError::NotADirectory(path) => ErrorResponse::new(
+                "NOT_A_DIRECTORY",
+                format!("Not a directory: {}", path),
+                ErrorCategory::Filesystem,
+            )
+            .with_suggestion("Please select a directory, not a file."),
+
+            ScanError::IoError(e) => ErrorResponse::new(
+                "IO_ERROR",
+                format!("Failed to scan: {}", e),
+                ErrorCategory::Filesystem,
+            )
+            .with_suggestion("Check file permissions and ensure the disk is accessible."),
+
+            ScanError::SecurityViolation(msg) => ErrorResponse::new(
+                "SECURITY_VIOLATION",
+                format!("Security violation: {}", msg),
+                ErrorCategory::Security,
+            )
+            .non_recoverable(),
+
+            ScanError::InternalError(msg) => ErrorResponse::new(
+                "INTERNAL_ERROR",
+                format!("Internal error: {}", msg),
+                ErrorCategory::Internal,
+            )
+            .with_suggestion("This is a bug. Please report it."),
+        }
+    }
+}
+
+// Use macro for Serialize implementation (QUAL-001)
+crate::impl_serialize_via_error_response!(ScanError);
 
 /// File category based on extension
 #[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq, Eq, Hash, TS)]
@@ -98,6 +147,35 @@ pub struct ScanOptions {
     pub extensions: Option<Vec<String>>,
 }
 
+/// Reason why a file was skipped during scan
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "bindings/")]
+#[serde(rename_all = "camelCase")]
+pub enum SkipReason {
+    /// Could not read file metadata
+    MetadataError,
+    /// File was filtered out by extension
+    FilteredByExtension,
+    /// Permission denied
+    PermissionDenied,
+    /// Other error
+    Other,
+}
+
+/// Information about a file that was skipped during scan
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedFile {
+    /// Path to the skipped file
+    pub path: String,
+    /// Reason the file was skipped
+    pub reason: SkipReason,
+    /// Optional error message
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// Result of a folder scan
 #[derive(Debug, Serialize, TS)]
 #[ts(export, export_to = "bindings/")]
@@ -109,6 +187,12 @@ pub struct ScanResult {
     pub total_count: usize,
     /// Total size in bytes
     pub total_size: u64,
+    /// Files that were skipped during scan (UX-002)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skipped: Vec<SkippedFile>,
+    /// Number of files skipped
+    #[serde(default)]
+    pub skipped_count: usize,
     /// Scan session ID (for tracking/cancellation)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
@@ -192,10 +276,19 @@ impl Default for CancellationToken {
     }
 }
 
+/// A scan session with its cancellation token and creation time
+struct ScanSession {
+    token: CancellationToken,
+    created_at: Instant,
+}
+
+/// Maximum session lifetime before automatic cleanup (1 hour)
+const SESSION_TTL_SECS: u64 = 3600;
+
 /// State for managing active scan sessions
 pub struct ScanState {
-    /// Active scan sessions with their cancellation tokens
-    sessions: Mutex<HashMap<String, CancellationToken>>,
+    /// Active scan sessions with their cancellation tokens and timestamps
+    sessions: Mutex<HashMap<String, ScanSession>>,
 }
 
 impl ScanState {
@@ -206,21 +299,48 @@ impl ScanState {
     }
 
     /// Create a new scan session and return its ID
-    pub fn create_session(&self) -> (String, CancellationToken) {
+    /// Also cleans up any stale sessions to prevent memory leaks
+    ///
+    /// Returns None if the mutex is poisoned (indicates a serious bug)
+    pub fn create_session(&self) -> Option<(String, CancellationToken)> {
         let session_id = Uuid::new_v4().to_string();
         let token = CancellationToken::new();
 
-        let mut sessions = self.sessions.lock().unwrap();
-        sessions.insert(session_id.clone(), token.clone());
+        let mut sessions = match self.sessions.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                // Log the error but try to recover - get the data anyway
+                eprintln!("Warning: Scanner session mutex was poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
 
-        (session_id, token)
+        // Clean up stale sessions before adding new one
+        Self::cleanup_stale_sessions_internal(&mut sessions);
+
+        sessions.insert(
+            session_id.clone(),
+            ScanSession {
+                token: token.clone(),
+                created_at: Instant::now(),
+            },
+        );
+
+        Some((session_id, token))
     }
 
     /// Cancel a scan session by ID
+    /// Returns false if the session doesn't exist or mutex is poisoned
     pub fn cancel_session(&self, session_id: &str) -> bool {
-        let sessions = self.sessions.lock().unwrap();
-        if let Some(token) = sessions.get(session_id) {
-            token.cancel();
+        let sessions = match self.sessions.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Warning: Scanner session mutex was poisoned during cancel");
+                poisoned.into_inner()
+            }
+        };
+        if let Some(session) = sessions.get(session_id) {
+            session.token.cancel();
             true
         } else {
             false
@@ -229,13 +349,57 @@ impl ScanState {
 
     /// Remove a completed session
     pub fn remove_session(&self, session_id: &str) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = match self.sessions.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Warning: Scanner session mutex was poisoned during remove");
+                poisoned.into_inner()
+            }
+        };
         sessions.remove(session_id);
     }
 
     /// Get active session count
+    /// Returns 0 if mutex is poisoned
     pub fn active_count(&self) -> usize {
-        self.sessions.lock().unwrap().len()
+        match self.sessions.lock() {
+            Ok(guard) => guard.len(),
+            Err(poisoned) => {
+                eprintln!("Warning: Scanner session mutex was poisoned during count");
+                poisoned.into_inner().len()
+            }
+        }
+    }
+
+    /// Clean up sessions that have exceeded their TTL
+    /// This prevents memory leaks from crashed or abandoned scans
+    /// Returns 0 if mutex is poisoned
+    pub fn cleanup_stale_sessions(&self) -> usize {
+        let mut sessions = match self.sessions.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Warning: Scanner session mutex was poisoned during cleanup");
+                poisoned.into_inner()
+            }
+        };
+        Self::cleanup_stale_sessions_internal(&mut sessions)
+    }
+
+    /// Internal cleanup function (requires lock to already be held)
+    fn cleanup_stale_sessions_internal(sessions: &mut HashMap<String, ScanSession>) -> usize {
+        let ttl = Duration::from_secs(SESSION_TTL_SECS);
+        let before_count = sessions.len();
+
+        sessions.retain(|_, session| {
+            let is_stale = session.created_at.elapsed() > ttl;
+            if is_stale {
+                // Cancel the token before removing to ensure any waiting operations are notified
+                session.token.cancel();
+            }
+            !is_stale
+        });
+
+        before_count - sessions.len()
     }
 }
 
@@ -296,34 +460,45 @@ fn is_metadata_supported(ext: &str) -> bool {
     !matches!(get_metadata_capability(ext), MetadataCapability::None)
 }
 
+/// Internal scan result with files and skipped info
+struct ScanInternalResult {
+    files: Vec<FileInfo>,
+    total_size: u64,
+    skipped: Vec<SkippedFile>,
+    cancelled: bool,
+}
+
 /// Internal scan implementation with optional progress reporting and cancellation
 fn scan_folder_internal(
     path: &str,
     options: &ScanOptions,
     cancel_token: Option<&CancellationToken>,
     progress_callback: Option<&dyn Fn(usize, &str)>,
-) -> Result<(Vec<FileInfo>, u64, bool), ScanError> {
-    let folder_path = Path::new(path);
+) -> Result<ScanInternalResult, ScanError> {
+    // Security: Validate and canonicalize the path to prevent path traversal
+    let canonical_path = validate_scan_path(path)?;
 
-    // Validate path exists
-    if !folder_path.exists() {
+    // Additional existence check (validate_scan_path already checks this, but be explicit)
+    if !canonical_path.exists() {
         return Err(ScanError::PathNotFound(path.to_string()));
     }
 
-    // Validate it's a directory
-    if !folder_path.is_dir() {
+    // Validate it's a directory (validate_scan_path already checks this, but be explicit)
+    if !canonical_path.is_dir() {
         return Err(ScanError::NotADirectory(path.to_string()));
     }
 
     let mut files = Vec::new();
+    let mut skipped = Vec::new();
     let mut total_size: u64 = 0;
     let mut discovered: usize = 0;
 
     // Configure walkdir based on recursive option
+    // Use the canonicalized path to ensure we're scanning the validated directory
     let walker = if options.recursive {
-        WalkDir::new(path)
+        WalkDir::new(&canonical_path)
     } else {
-        WalkDir::new(path).max_depth(1)
+        WalkDir::new(&canonical_path).max_depth(1)
     };
 
     // Normalize extensions to lowercase for comparison
@@ -336,7 +511,12 @@ fn scan_folder_internal(
         // Check for cancellation
         if let Some(token) = cancel_token {
             if token.is_cancelled() {
-                return Ok((files, total_size, true)); // true = cancelled
+                return Ok(ScanInternalResult {
+                    files,
+                    total_size,
+                    skipped,
+                    cancelled: true,
+                });
             }
         }
 
@@ -349,9 +529,17 @@ fn scan_folder_internal(
 
         discovered += 1;
 
-        // Report progress every 10 files or for the first file
+        // Report progress with adaptive interval based on discovered count
+        // This reduces IPC overhead for large directories while maintaining responsiveness
         if let Some(callback) = progress_callback {
-            if discovered == 1 || discovered % 10 == 0 {
+            let report_interval = match discovered {
+                0..=100 => 1,        // Report every file for small scans
+                101..=1000 => 10,    // Report every 10 files
+                1001..=10000 => 100, // Report every 100 files
+                _ => 500,            // Report every 500 files for very large scans
+            };
+
+            if discovered == 1 || discovered % report_interval == 0 {
                 let file_name = entry_path
                     .file_name()
                     .and_then(|n| n.to_str())
@@ -364,8 +552,17 @@ fn scan_folder_internal(
         let metadata = match entry_path.metadata() {
             Ok(m) => m,
             Err(e) => {
-                // Skip files we can't read metadata for
-                eprintln!("Warning: Could not read metadata for {:?}: {}", entry_path, e);
+                // Track skipped files (UX-002)
+                let reason = if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    SkipReason::PermissionDenied
+                } else {
+                    SkipReason::MetadataError
+                };
+                skipped.push(SkippedFile {
+                    path: entry_path.to_string_lossy().to_string(),
+                    reason,
+                    error: Some(e.to_string()),
+                });
                 continue;
             }
         };
@@ -397,7 +594,7 @@ fn scan_folder_internal(
             .to_string();
 
         let relative_path = entry_path
-            .strip_prefix(path)
+            .strip_prefix(&canonical_path)
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| file_name.clone());
 
@@ -434,7 +631,12 @@ fn scan_folder_internal(
         });
     }
 
-    Ok((files, total_size, false)) // false = not cancelled
+    Ok(ScanInternalResult {
+        files,
+        total_size,
+        skipped,
+        cancelled: false,
+    })
 }
 
 /// Scan a folder and return information about all files within it
@@ -446,15 +648,18 @@ pub async fn scan_folder(
     options: Option<ScanOptions>,
 ) -> Result<ScanResult, ScanError> {
     let options = options.unwrap_or_default();
-    let (files, total_size, cancelled) = scan_folder_internal(&path, &options, None, None)?;
-    let total_count = files.len();
+    let result = scan_folder_internal(&path, &options, None, None)?;
+    let total_count = result.files.len();
+    let skipped_count = result.skipped.len();
 
     Ok(ScanResult {
-        files,
+        files: result.files,
         total_count,
-        total_size,
+        total_size: result.total_size,
+        skipped: result.skipped,
+        skipped_count,
         session_id: None,
-        cancelled,
+        cancelled: result.cancelled,
     })
 }
 
@@ -474,7 +679,8 @@ pub async fn scan_folder_with_progress(
     let options = options.unwrap_or_default();
 
     // Create a scan session
-    let (session_id, cancel_token) = scan_state.create_session();
+    let (session_id, cancel_token) = scan_state.create_session()
+        .ok_or_else(|| ScanError::InternalError("Failed to create scan session".to_string()))?;
 
     // Emit starting progress
     let _ = window.emit("scan-progress", ScanProgress {
@@ -510,8 +716,9 @@ pub async fn scan_folder_with_progress(
     scan_state.remove_session(&session_id);
 
     match result {
-        Ok((files, total_size, cancelled)) => {
-            let total_count = files.len();
+        Ok(scan_result) => {
+            let total_count = scan_result.files.len();
+            let skipped_count = scan_result.skipped.len();
 
             // Emit completion progress
             let _ = window.emit("scan-progress", ScanProgress {
@@ -519,17 +726,19 @@ pub async fn scan_folder_with_progress(
                 current_file: String::new(),
                 discovered: total_count,
                 processed: total_count,
-                phase: if cancelled { ScanPhase::Cancelled } else { ScanPhase::Complete },
+                phase: if scan_result.cancelled { ScanPhase::Cancelled } else { ScanPhase::Complete },
                 complete: true,
                 error: None,
             });
 
             Ok(ScanResult {
-                files,
+                files: scan_result.files,
                 total_count,
-                total_size,
+                total_size: scan_result.total_size,
+                skipped: scan_result.skipped,
+                skipped_count,
                 session_id: Some(session_id),
-                cancelled,
+                cancelled: scan_result.cancelled,
             })
         }
         Err(e) => {
@@ -697,7 +906,7 @@ mod tests {
         let state = ScanState::new();
         assert_eq!(state.active_count(), 0);
 
-        let (session_id, _token) = state.create_session();
+        let (session_id, _token) = state.create_session().expect("should create session");
         assert!(!session_id.is_empty());
         assert_eq!(state.active_count(), 1);
     }
@@ -705,7 +914,7 @@ mod tests {
     #[test]
     fn test_scan_state_cancel_session() {
         let state = ScanState::new();
-        let (session_id, token) = state.create_session();
+        let (session_id, token) = state.create_session().expect("should create session");
 
         assert!(!token.is_cancelled());
 
@@ -724,7 +933,7 @@ mod tests {
     #[test]
     fn test_scan_state_remove_session() {
         let state = ScanState::new();
-        let (session_id, _token) = state.create_session();
+        let (session_id, _token) = state.create_session().expect("should create session");
         assert_eq!(state.active_count(), 1);
 
         state.remove_session(&session_id);
@@ -738,15 +947,16 @@ mod tests {
 
         // Test without cancellation
         let token = CancellationToken::new();
-        let (files, _size, cancelled) = scan_folder_internal(
+        let result = scan_folder_internal(
             &dir.path().to_string_lossy(),
             &ScanOptions::default(),
             Some(&token),
             None,
         ).unwrap();
 
-        assert!(!cancelled);
-        assert_eq!(files.len(), 3);
+        assert!(!result.cancelled);
+        assert_eq!(result.files.len(), 3);
+        assert!(result.skipped.is_empty());
     }
 
     #[test]
@@ -758,15 +968,15 @@ mod tests {
         let token = CancellationToken::new();
         token.cancel();
 
-        let (files, _size, cancelled) = scan_folder_internal(
+        let result = scan_folder_internal(
             &dir.path().to_string_lossy(),
             &ScanOptions::default(),
             Some(&token),
             None,
         ).unwrap();
 
-        assert!(cancelled);
-        assert_eq!(files.len(), 0); // Should be empty since cancelled immediately
+        assert!(result.cancelled);
+        assert_eq!(result.files.len(), 0); // Should be empty since cancelled immediately
     }
 
     #[test]

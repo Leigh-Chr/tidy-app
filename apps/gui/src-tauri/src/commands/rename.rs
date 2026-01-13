@@ -4,6 +4,8 @@
 // Story 6.4: Visual Rename Review (AC1, AC5)
 
 use chrono::{DateTime, Utc};
+use lazy_static::lazy_static;
+use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -12,7 +14,9 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use super::error::{ErrorCategory, ErrorResponse};
 use super::scanner::FileInfo;
+use super::security::{validate_rename_path, SecurityError};
 
 // =============================================================================
 // Error Types
@@ -28,16 +32,60 @@ pub enum RenameError {
     ValidationFailed(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("Security violation: {0}")]
+    SecurityViolation(String),
 }
 
-impl Serialize for RenameError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
+impl From<SecurityError> for RenameError {
+    fn from(err: SecurityError) -> Self {
+        RenameError::SecurityViolation(err.to_string())
     }
 }
+
+impl RenameError {
+    /// Convert to structured error response for frontend
+    pub fn to_error_response(&self) -> ErrorResponse {
+        match self {
+            RenameError::PreviewFailed(msg) => ErrorResponse::new(
+                "PREVIEW_FAILED",
+                format!("Preview generation failed: {}", msg),
+                ErrorCategory::Internal,
+            )
+            .with_suggestion("Try re-scanning the folder or check the template pattern."),
+
+            RenameError::RenameFailed(msg) => ErrorResponse::new(
+                "RENAME_FAILED",
+                format!("Rename operation failed: {}", msg),
+                ErrorCategory::Filesystem,
+            )
+            .with_suggestion("Check file permissions and ensure no files are in use by other programs."),
+
+            RenameError::ValidationFailed(msg) => ErrorResponse::new(
+                "VALIDATION_FAILED",
+                format!("Validation failed: {}", msg),
+                ErrorCategory::Validation,
+            )
+            .with_suggestion("Review the proposed filenames and fix any invalid characters or conflicts."),
+
+            RenameError::IoError(e) => ErrorResponse::new(
+                "IO_ERROR",
+                format!("IO error: {}", e),
+                ErrorCategory::Filesystem,
+            )
+            .with_suggestion("Check file permissions and ensure the disk is accessible."),
+
+            RenameError::SecurityViolation(msg) => ErrorResponse::new(
+                "SECURITY_VIOLATION",
+                format!("Security violation: {}", msg),
+                ErrorCategory::Security,
+            )
+            .non_recoverable(),
+        }
+    }
+}
+
+// Use macro for Serialize implementation (QUAL-001)
+crate::impl_serialize_via_error_response!(RenameError);
 
 // =============================================================================
 // Rename Types (matching @tidy-app/core schema)
@@ -440,6 +488,67 @@ const COUNTER_PATTERNS: &[&str] = &[
     r"[ ]?\(\d{1,4}\)$",     // (1), (001), " (1)" (Windows duplicate style)
 ];
 
+// =============================================================================
+// Pre-compiled Regex Patterns (lazy_static for performance)
+// =============================================================================
+
+lazy_static! {
+    /// Pre-compiled datetime patterns for idempotent filename cleaning
+    static ref COMPILED_DATETIME_PATTERNS: Vec<Regex> = DATETIME_PATTERNS
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect();
+
+    /// Pre-compiled date patterns with separators
+    static ref COMPILED_DATE_SEPARATED_PATTERNS: Vec<Regex> = DATE_PATTERNS_SEPARATED
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect();
+
+    /// Pre-compiled compact date patterns
+    static ref COMPILED_DATE_COMPACT_PATTERNS: Vec<Regex> = DATE_PATTERNS_COMPACT
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect();
+
+    /// Pre-compiled time patterns
+    static ref COMPILED_TIME_PATTERNS: Vec<Regex> = TIME_PATTERNS
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect();
+
+    /// Pre-compiled counter patterns
+    static ref COMPILED_COUNTER_PATTERNS: Vec<Regex> = COUNTER_PATTERNS
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect();
+
+    /// Pre-compiled pattern for consecutive separators
+    static ref CONSECUTIVE_SEPARATORS: Regex = Regex::new(r"[-_ .]{2,}").unwrap();
+
+    /// Pre-compiled pattern for {date:FORMAT} template placeholders (SEC-P1-001, PERF-P2-001)
+    /// Using a simple, non-backtracking pattern to prevent ReDoS attacks
+    static ref COMPILED_DATE_FORMAT_PATTERN: Regex = Regex::new(r"\{date:([^}]{1,50})\}").unwrap();
+}
+
+/// Apply a pre-compiled regex pattern with boundary-aware replacement.
+/// - If pattern match is in the middle (has separators on both sides), keep one separator
+/// - If pattern match is at an edge (start or end), remove entirely
+fn apply_compiled_pattern_with_boundary_handling(input: &str, re: &Regex) -> String {
+    re.replace_all(input, |caps: &regex_lite::Captures| {
+        let lead = caps.name("lead").map_or("", |m| m.as_str());
+        let trail = caps.name("trail").map_or("", |m| m.as_str());
+
+        // If both boundaries are actual separators (middle position), preserve one
+        if !lead.is_empty() && !trail.is_empty() {
+            lead.to_string() // Preserve the leading separator style
+        } else {
+            String::new() // At start or end, remove entirely
+        }
+    })
+    .to_string()
+}
+
 /// Apply a pattern with boundary-aware replacement.
 /// - If pattern match is in the middle (has separators on both sides), keep one separator
 /// - If pattern match is at an edge (start or end), remove entirely
@@ -497,29 +606,28 @@ fn clean_filename(name: &str) -> String {
         let prev = result.clone();
 
         // Apply datetime patterns first (date + time as a unit)
-        for pattern in DATETIME_PATTERNS {
-            result = apply_pattern_with_boundary_handling(&result, pattern);
+        // Using pre-compiled patterns for performance
+        for re in COMPILED_DATETIME_PATTERNS.iter() {
+            result = apply_compiled_pattern_with_boundary_handling(&result, re);
         }
 
         // Apply date patterns with separators
-        for pattern in DATE_PATTERNS_SEPARATED {
-            result = apply_pattern_with_boundary_handling(&result, pattern);
+        for re in COMPILED_DATE_SEPARATED_PATTERNS.iter() {
+            result = apply_compiled_pattern_with_boundary_handling(&result, re);
         }
 
         // Apply compact date patterns
-        for pattern in DATE_PATTERNS_COMPACT {
-            result = apply_pattern_with_boundary_handling(&result, pattern);
+        for re in COMPILED_DATE_COMPACT_PATTERNS.iter() {
+            result = apply_compiled_pattern_with_boundary_handling(&result, re);
         }
 
         // Apply standalone time patterns
-        for pattern in TIME_PATTERNS {
-            result = apply_pattern_with_boundary_handling(&result, pattern);
+        for re in COMPILED_TIME_PATTERNS.iter() {
+            result = apply_compiled_pattern_with_boundary_handling(&result, re);
         }
 
-        // Clean up multiple consecutive separators
-        if let Ok(re) = regex_lite::Regex::new(r"[-_ .]{2,}") {
-            result = re.replace_all(&result, "_").to_string();
-        }
+        // Clean up multiple consecutive separators using pre-compiled pattern
+        result = CONSECUTIVE_SEPARATORS.replace_all(&result, "_").to_string();
 
         // Trim separators from edges
         result = result
@@ -532,10 +640,9 @@ fn clean_filename(name: &str) -> String {
     }
 
     // Counter patterns (at end only, single pass after all date/time removal)
-    for pattern in COUNTER_PATTERNS {
-        if let Ok(re) = regex_lite::Regex::new(pattern) {
-            result = re.replace(&result, "").to_string();
-        }
+    // Using pre-compiled patterns for performance
+    for re in COMPILED_COUNTER_PATTERNS.iter() {
+        result = re.replace(&result, "").to_string();
     }
 
     // Final trim
@@ -894,10 +1001,10 @@ fn apply_template(file: &FileInfo, pattern: &str, date_format: &str, strip_exist
         sources.push("file-date".to_string());
     }
 
-    // Replace {date:FORMAT} patterns
-    let date_pattern = regex_lite::Regex::new(r"\{date:([^}]+)\}").unwrap();
+    // Replace {date:FORMAT} patterns using pre-compiled regex (SEC-P1-001, PERF-P2-001)
+    // The pattern limits format string length to 50 chars to prevent DoS
     let mut new_result = result.clone();
-    for cap in date_pattern.captures_iter(&result) {
+    for cap in COMPILED_DATE_FORMAT_PATTERN.captures_iter(&result) {
         if let Some(format_match) = cap.get(1) {
             let custom_format = format_match.as_str();
             let date_str = format_date(&file.modified_at, custom_format);
@@ -1040,8 +1147,9 @@ pub async fn generate_preview(
         }
     };
 
-    let mut proposals: Vec<RenameProposal> = Vec::new();
-    let mut proposed_paths: HashMap<String, Vec<String>> = HashMap::new();
+    // Pre-allocate with known capacity (PERF-008)
+    let mut proposals: Vec<RenameProposal> = Vec::with_capacity(files.len());
+    let mut proposed_paths: HashMap<String, Vec<String>> = HashMap::with_capacity(files.len());
 
     // Get options
     let case_style = &options.case_style;
@@ -1261,7 +1369,8 @@ pub async fn execute_rename(
         .proposal_ids
         .map(|ids| ids.into_iter().collect());
 
-    let mut results: Vec<FileRenameResult> = Vec::new();
+    // Pre-allocate with known capacity (PERF-008)
+    let mut results: Vec<FileRenameResult> = Vec::with_capacity(proposals.len());
 
     for proposal in &proposals {
         // Check if this proposal should be processed
@@ -1307,6 +1416,26 @@ pub async fn execute_rename(
                 new_name: None,
                 outcome: RenameOutcome::Skipped,
                 error: Some("No change needed".to_string()),
+            });
+            continue;
+        }
+
+        // Security: Validate proposed path doesn't escape the original file's directory tree
+        // For folder moves, the allowed_base will be the original file's directory
+        // For simple renames, same-directory operations are always allowed
+        if let Err(e) = validate_rename_path(
+            &proposal.original_path,
+            &proposal.proposed_path,
+            None, // Uses original's parent as base
+        ) {
+            results.push(FileRenameResult {
+                proposal_id: proposal.id.clone(),
+                original_path: proposal.original_path.clone(),
+                original_name: proposal.original_name.clone(),
+                new_path: None,
+                new_name: None,
+                outcome: RenameOutcome::Failed,
+                error: Some(format!("Security validation failed: {}", e)),
             });
             continue;
         }

@@ -4,13 +4,16 @@
 // Command names use snake_case per architecture requirements
 
 use chrono::Utc;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use super::error::{ErrorCategory, ErrorResponse};
 use super::rename::{BatchRenameResult, FileRenameResult, RenameOutcome};
 
 // =============================================================================
@@ -29,16 +32,60 @@ pub enum HistoryError {
     UndoFailed(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("Failed to acquire lock: {0}")]
+    LockFailed(String),
 }
 
-impl Serialize for HistoryError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
+impl HistoryError {
+    /// Convert to structured error response for frontend
+    pub fn to_error_response(&self) -> ErrorResponse {
+        match self {
+            HistoryError::LoadFailed(msg) => ErrorResponse::new(
+                "HISTORY_LOAD_FAILED",
+                format!("Failed to load history: {}", msg),
+                ErrorCategory::Config,
+            )
+            .with_suggestion("History may be corrupted. Try clearing history or check disk space."),
+
+            HistoryError::SaveFailed(msg) => ErrorResponse::new(
+                "HISTORY_SAVE_FAILED",
+                format!("Failed to save history: {}", msg),
+                ErrorCategory::Config,
+            )
+            .with_suggestion("Check write permissions in the configuration directory."),
+
+            HistoryError::EntryNotFound(id) => ErrorResponse::new(
+                "ENTRY_NOT_FOUND",
+                format!("History entry not found: {}", id),
+                ErrorCategory::Internal,
+            ),
+
+            HistoryError::UndoFailed(msg) => ErrorResponse::new(
+                "UNDO_FAILED",
+                format!("Failed to undo operation: {}", msg),
+                ErrorCategory::Filesystem,
+            )
+            .with_suggestion("Some files may have been moved or deleted since the operation."),
+
+            HistoryError::IoError(e) => ErrorResponse::new(
+                "IO_ERROR",
+                format!("IO error: {}", e),
+                ErrorCategory::Filesystem,
+            )
+            .with_suggestion("Check file permissions and ensure the disk is accessible."),
+
+            HistoryError::LockFailed(msg) => ErrorResponse::new(
+                "LOCK_FAILED",
+                format!("Failed to acquire lock: {}", msg),
+                ErrorCategory::Internal,
+            )
+            .with_suggestion("Another operation may be in progress. Please try again."),
+        }
     }
 }
+
+// Use macro for Serialize implementation (QUAL-001)
+crate::impl_serialize_via_error_response!(HistoryError);
 
 // =============================================================================
 // History Types
@@ -135,6 +182,10 @@ pub struct UndoResult {
 
 const HISTORY_FILENAME: &str = "history.json";
 
+/// Maximum number of history entries to retain (MEM-P2-002)
+/// Older entries are automatically pruned when this limit is exceeded
+const MAX_HISTORY_ENTRIES: usize = 500;
+
 /// Get the path to the history file
 fn get_history_path() -> Result<PathBuf, HistoryError> {
     let config_dir = dirs::config_dir()
@@ -151,10 +202,11 @@ fn get_history_path() -> Result<PathBuf, HistoryError> {
 }
 
 // =============================================================================
-// Storage Functions
+// Storage Functions (with file locking to prevent race conditions)
 // =============================================================================
 
-/// Load history from disk
+/// Load history from disk (for read-only queries)
+/// Uses shared lock to allow concurrent reads
 #[tauri::command]
 pub async fn load_history() -> Result<HistoryStore, HistoryError> {
     let path = get_history_path()?;
@@ -163,23 +215,87 @@ pub async fn load_history() -> Result<HistoryStore, HistoryError> {
         return Ok(HistoryStore::default());
     }
 
-    let contents = fs::read_to_string(&path)?;
+    // Open file and acquire shared lock for reading
+    let file = File::open(&path)?;
+    file.lock_shared()
+        .map_err(|e| HistoryError::LockFailed(format!("Shared lock: {}", e)))?;
+
+    // Read contents while holding lock
+    let mut contents = String::new();
+    let mut reader = std::io::BufReader::new(&file);
+    reader.read_to_string(&mut contents)?;
+
+    // Lock is released when file is dropped
     let store: HistoryStore = serde_json::from_str(&contents)
         .map_err(|e| HistoryError::LoadFailed(e.to_string()))?;
 
     Ok(store)
 }
 
-/// Save history to disk
-async fn save_history(store: &HistoryStore) -> Result<(), HistoryError> {
-    let path = get_history_path()?;
-
+/// Save history to disk (internal, requires exclusive access)
+fn save_history_internal(store: &HistoryStore, file: &mut File) -> Result<(), HistoryError> {
     let contents = serde_json::to_string_pretty(store)
         .map_err(|e| HistoryError::SaveFailed(e.to_string()))?;
 
-    fs::write(&path, contents)?;
+    // Truncate file and write new contents
+    file.set_len(0)?;
+    file.write_all(contents.as_bytes())?;
+    file.sync_all()?; // Ensure data is flushed to disk
 
     Ok(())
+}
+
+/// Perform an atomic read-modify-write operation on the history store.
+/// This function acquires an exclusive lock, reads the current state,
+/// applies the modification function, and saves the result.
+///
+/// This prevents race conditions when multiple operations try to modify
+/// the history concurrently.
+fn with_locked_history<F, T>(modify_fn: F) -> Result<T, HistoryError>
+where
+    F: FnOnce(&mut HistoryStore) -> Result<T, HistoryError>,
+{
+    let path = get_history_path()?;
+
+    // Open or create the file with read+write access
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)?;
+
+    // Acquire exclusive lock for read-modify-write
+    file.lock_exclusive()
+        .map_err(|e| HistoryError::LockFailed(format!("Exclusive lock: {}", e)))?;
+
+    // Read current contents
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    // Parse existing store or create default
+    let mut store: HistoryStore = if contents.is_empty() {
+        HistoryStore::default()
+    } else {
+        serde_json::from_str(&contents)
+            .map_err(|e| HistoryError::LoadFailed(e.to_string()))?
+    };
+
+    // Apply the modification
+    let result = modify_fn(&mut store)?;
+
+    // Update last_modified timestamp
+    store.last_modified = Utc::now().to_rfc3339();
+
+    // Seek to beginning before writing
+    use std::io::Seek;
+    file.seek(std::io::SeekFrom::Start(0))?;
+
+    // Save updated store
+    save_history_internal(&store, &mut file)?;
+
+    // Lock is released when file is dropped
+    Ok(result)
 }
 
 // =============================================================================
@@ -230,22 +346,28 @@ pub fn create_entry_from_result(result: &BatchRenameResult) -> OperationHistoryE
 }
 
 /// Record an operation to history
+/// Uses file locking to prevent race conditions with concurrent operations
+/// Automatically prunes old entries when MAX_HISTORY_ENTRIES is exceeded (MEM-P2-002)
 #[tauri::command]
 pub async fn record_operation(
     result: BatchRenameResult,
 ) -> Result<OperationHistoryEntry, HistoryError> {
-    // Load existing history
-    let mut store = load_history().await?;
-
-    // Create new entry
+    // Create new entry before acquiring lock
     let entry = create_entry_from_result(&result);
+    let entry_clone = entry.clone();
 
-    // Prepend to entries (newest first)
-    store.entries.insert(0, entry.clone());
-    store.last_modified = Utc::now().to_rfc3339();
+    // Use atomic read-modify-write with file locking
+    with_locked_history(move |store| {
+        // Prepend to entries (newest first)
+        store.entries.insert(0, entry_clone);
 
-    // Save updated history
-    save_history(&store).await?;
+        // MEM-P2-002: Prune old entries if we exceed the limit
+        if store.entries.len() > MAX_HISTORY_ENTRIES {
+            store.entries.truncate(MAX_HISTORY_ENTRIES);
+        }
+
+        Ok(())
+    })?;
 
     Ok(entry)
 }
@@ -277,30 +399,32 @@ pub async fn get_history_count() -> Result<usize, HistoryError> {
 // =============================================================================
 
 /// Undo an operation by restoring files to their original locations
+/// Uses file locking to prevent race conditions during the undone flag update
 #[tauri::command]
 pub async fn undo_operation(entry_id: String) -> Result<UndoResult, HistoryError> {
-    // Load history
-    let mut store = load_history().await?;
+    // Step 1: Load history and get entry info (with shared lock, released quickly)
+    let store = load_history().await?;
 
     // Find the entry
-    let entry_index = store.entries
+    let entry = store.entries
         .iter()
-        .position(|e| e.id == entry_id)
+        .find(|e| e.id == entry_id)
         .ok_or_else(|| HistoryError::EntryNotFound(entry_id.clone()))?;
-
-    let entry = &store.entries[entry_index];
 
     // Check if already undone
     if entry.undone {
         return Err(HistoryError::UndoFailed("Operation already undone".to_string()));
     }
 
+    // Clone file info so we can release the lock before file operations
+    let files_to_restore: Vec<_> = entry.files.clone();
+
+    // Step 2: Perform file operations (no lock held - potentially slow I/O)
     let mut files_restored = 0;
     let mut files_failed = 0;
     let mut errors: Vec<String> = Vec::new();
 
-    // Restore each file
-    for file in &entry.files {
+    for file in &files_to_restore {
         if !file.success {
             // Skip files that weren't successfully renamed
             continue;
@@ -328,11 +452,16 @@ pub async fn undo_operation(entry_id: String) -> Result<UndoResult, HistoryError
         }
     }
 
-    // Mark entry as undone if at least some files were restored
+    // Step 3: Atomically mark entry as undone if at least some files were restored
     if files_restored > 0 {
-        store.entries[entry_index].undone = true;
-        store.last_modified = Utc::now().to_rfc3339();
-        save_history(&store).await?;
+        let entry_id_for_update = entry_id.clone();
+        with_locked_history(move |store| {
+            // Re-find the entry (store may have changed while we were doing file I/O)
+            if let Some(entry) = store.entries.iter_mut().find(|e| e.id == entry_id_for_update) {
+                entry.undone = true;
+            }
+            Ok(())
+        })?;
     }
 
     Ok(UndoResult {
@@ -359,10 +488,14 @@ pub async fn can_undo_operation(entry_id: String) -> Result<bool, HistoryError> 
 }
 
 /// Clear all history
+/// Uses file locking to prevent race conditions
 #[tauri::command]
 pub async fn clear_history() -> Result<(), HistoryError> {
-    let store = HistoryStore::default();
-    save_history(&store).await
+    with_locked_history(|store| {
+        store.entries.clear();
+        store.version = "1.0".to_string();
+        Ok(())
+    })
 }
 
 // =============================================================================

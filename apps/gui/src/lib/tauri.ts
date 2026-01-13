@@ -8,6 +8,144 @@
 import { invoke } from "@tauri-apps/api/core";
 
 // =============================================================================
+// Error Types (Structured Error Handling)
+// =============================================================================
+
+/** Error category for grouping and UI display */
+export type ErrorCategory =
+  | "filesystem"
+  | "security"
+  | "config"
+  | "network"
+  | "validation"
+  | "internal";
+
+/**
+ * Structured error response from the backend.
+ * Provides consistent error format across all commands with actionable information.
+ */
+export interface ErrorResponse {
+  /** Error code for programmatic handling (e.g., "PATH_NOT_FOUND") */
+  code: string;
+  /** Human-readable error message */
+  message: string;
+  /** Error category for grouping */
+  category: ErrorCategory;
+  /** Whether the error is recoverable */
+  recoverable: boolean;
+  /** Optional suggestion for the user */
+  suggestion?: string;
+  /** Optional additional details */
+  details?: Record<string, unknown>;
+}
+
+/**
+ * Parse an error into a structured ErrorResponse.
+ * Handles both structured errors from the backend and unstructured errors.
+ *
+ * @param error - The error to parse (can be Error, string, or ErrorResponse)
+ * @returns A structured ErrorResponse
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await scanFolder('/path');
+ * } catch (e) {
+ *   const error = parseError(e);
+ *   if (error.suggestion) {
+ *     showToast(error.message, { description: error.suggestion });
+ *   }
+ * }
+ * ```
+ */
+export function parseError(error: unknown): ErrorResponse {
+  // Already a structured error
+  if (isErrorResponse(error)) {
+    return error;
+  }
+
+  // String that might be JSON (Tauri serializes errors as strings)
+  if (typeof error === "string") {
+    try {
+      const parsed: unknown = JSON.parse(error);
+      if (isErrorResponse(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Not JSON, treat as plain message
+      return {
+        code: "UNKNOWN_ERROR",
+        message: error,
+        category: "internal",
+        recoverable: true,
+      };
+    }
+  }
+
+  // Error object
+  if (error instanceof Error) {
+    // Try to parse the message as JSON (for Tauri errors)
+    try {
+      const parsed: unknown = JSON.parse(error.message);
+      if (isErrorResponse(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Not JSON, use message as-is
+    }
+
+    return {
+      code: "ERROR",
+      message: error.message,
+      category: "internal",
+      recoverable: true,
+    };
+  }
+
+  // Unknown error type
+  return {
+    code: "UNKNOWN_ERROR",
+    message: String(error),
+    category: "internal",
+    recoverable: true,
+  };
+}
+
+/**
+ * Type guard to check if an object is an ErrorResponse
+ */
+export function isErrorResponse(value: unknown): value is ErrorResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.code === "string" &&
+    typeof obj.message === "string" &&
+    typeof obj.category === "string" &&
+    typeof obj.recoverable === "boolean"
+  );
+}
+
+/**
+ * Get a user-friendly error message with optional suggestion.
+ * Useful for displaying errors in toasts or error boundaries.
+ *
+ * @param error - The error to format
+ * @returns An object with message and optional suggestion
+ */
+export function formatErrorForDisplay(error: unknown): {
+  message: string;
+  suggestion?: string;
+  recoverable: boolean;
+} {
+  const parsed = parseError(error);
+  return {
+    message: parsed.message,
+    suggestion: parsed.suggestion,
+    recoverable: parsed.recoverable,
+  };
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -64,6 +202,23 @@ export interface ScanOptions {
   extensions?: string[];
 }
 
+/** Reason why a file was skipped during scan (UX-002) */
+export type SkipReason =
+  | "metadataError"
+  | "filteredByExtension"
+  | "permissionDenied"
+  | "other";
+
+/** Information about a file that was skipped during scan (UX-002) */
+export interface SkippedFile {
+  /** Path to the skipped file */
+  path: string;
+  /** Reason the file was skipped */
+  reason: SkipReason;
+  /** Optional error message */
+  error?: string;
+}
+
 /** Result of a folder scan */
 export interface ScanResult {
   /** List of scanned files */
@@ -72,6 +227,10 @@ export interface ScanResult {
   totalCount: number;
   /** Total size in bytes */
   totalSize: number;
+  /** Files that were skipped during scan (UX-002) */
+  skipped?: SkippedFile[];
+  /** Number of files skipped */
+  skippedCount?: number;
   /** Scan session ID (for tracking/cancellation) */
   sessionId?: string;
   /** Whether the scan was cancelled */
@@ -813,11 +972,16 @@ export interface ExportData {
   version: string;
 }
 
+/** Export format options (FEAT-003) */
+export type ExportFormat = "json" | "csv";
+
 /** Input for export command */
 export interface ExportInput {
   folder: string;
   files: FileInfo[];
   preview?: RenamePreview;
+  /** Export format (default: json) */
+  format?: ExportFormat;
 }
 
 /** Result of export operation */

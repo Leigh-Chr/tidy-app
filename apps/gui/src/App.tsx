@@ -3,7 +3,13 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ChevronLeft } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useAppStore } from "@/stores/app-store";
+import {
+  useAppStore,
+  useScanState,
+  usePreviewState,
+  useWorkflowState,
+  useFilteredFiles,
+} from "@/stores/app-store";
 import { DropZone } from "@/components/drop-zone/DropZone";
 import { PreviewPanel } from "@/components/preview-panel/PreviewPanel";
 import { ConfigureStep } from "@/components/configure-step";
@@ -15,38 +21,52 @@ import { WorkflowDots } from "@/components/workflow";
 import { Toaster } from "@/components/ui/sonner";
 import { openFolderDialog } from "@/lib/tauri";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { cn } from "@/lib/utils";
+import { handleBackgroundError } from "@/lib/background-errors";
 
 function App() {
-  const {
-    error,
-    loadVersion,
-    loadConfig,
-    selectedFolder,
-    scanStatus,
-    scanResult,
-    scanError,
-    selectFolder,
-    clearFolder,
-    preview,
-    getFilteredFiles,
-    workflowStep,
-    setWorkflowStep,
-  } = useAppStore();
+  // Use selector hooks for better performance (PERF-001)
+  // This prevents re-renders when unrelated state changes
+  const { scanStatus, scanResult, scanError, selectedFolder } = useScanState();
+  const { preview } = usePreviewState();
+  const { workflowStep } = useWorkflowState();
+
+  // Get stable action references (these don't change)
+  const selectFolder = useAppStore((state) => state.selectFolder);
+  const clearFolder = useAppStore((state) => state.clearFolder);
+  const setWorkflowStep = useAppStore((state) => state.setWorkflowStep);
+  const loadVersion = useAppStore((state) => state.loadVersion);
+  const loadConfig = useAppStore((state) => state.loadConfig);
+  const error = useAppStore((state) => state.error);
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
 
-  // Get filtered files for display
-  const filteredFiles = getFilteredFiles();
+  // Get filtered files using memoized selector (PERF-001)
+  const filteredFiles = useFilteredFiles();
 
   // Window maximized state for conditional styling
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
-    loadVersion();
+    // Load version and config with centralized error handling (ERR-001, P2-003)
+    loadVersion().catch((err) => {
+      handleBackgroundError(err, {
+        operation: "load version",
+        severity: "debug", // Version is non-critical
+      });
+    });
+
     // Load config to restore persisted scan options (Story 6.5 - AC1)
-    loadConfig();
+    loadConfig().catch((err) => {
+      handleBackgroundError(err, {
+        operation: "load configuration",
+        severity: "error",
+        showToast: true,
+        toastMessage: "Failed to load configuration. Some features may not work correctly.",
+      });
+    });
   }, [loadVersion, loadConfig]);
 
   // Track window maximized state
@@ -286,6 +306,9 @@ function App() {
 
       {/* Onboarding for new users */}
       <Onboarding />
+
+      {/* Keyboard shortcuts dialog (press ? to open) */}
+      <KeyboardShortcutsDialog />
     </div>
   );
 }
