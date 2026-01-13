@@ -39,7 +39,7 @@ const paths = envPaths('tidy-app', { suffix: '' });
  * Get the full path to the history file.
  *
  * Returns the OS-appropriate history file path:
- * - macOS: ~/Library/Application Support/tidy-app/history.json
+ * - macOS: ~/Library/Preferences/tidy-app/history.json
  * - Windows: %APPDATA%/tidy-app/history.json
  * - Linux: ~/.config/tidy-app/history.json
  *

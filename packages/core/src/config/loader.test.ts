@@ -50,7 +50,7 @@ describe('config loader', () => {
       // Path should be in a config directory
       const platform = process.platform;
       if (platform === 'darwin') {
-        expect(path).toContain('Library/Application Support');
+        expect(path).toContain('Library/Preferences');
       } else if (platform === 'win32') {
         // Windows uses AppData
         expect(path.toLowerCase()).toMatch(/appdata/i);
