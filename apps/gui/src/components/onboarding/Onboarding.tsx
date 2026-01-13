@@ -206,16 +206,3 @@ export function Onboarding({ forceShow = false, onComplete }: OnboardingProps) {
   );
 }
 
-/**
- * Reset onboarding state (useful for testing)
- */
-export function resetOnboarding(): void {
-  localStorage.removeItem(ONBOARDING_KEY);
-}
-
-/**
- * Check if onboarding was completed
- */
-export function isOnboardingCompleted(): boolean {
-  return localStorage.getItem(ONBOARDING_KEY) === "true";
-}

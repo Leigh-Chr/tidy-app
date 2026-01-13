@@ -262,7 +262,7 @@ describe("PreviewTable", () => {
     expect(checkbox).toHaveAttribute("data-state", "checked");
   });
 
-  it("renders scroll container for virtualization", () => {
+  it("renders list container", () => {
     const preview = createMockPreview();
     const onToggleSelection = vi.fn();
 
@@ -274,6 +274,6 @@ describe("PreviewTable", () => {
       />
     );
 
-    expect(screen.getByTestId("preview-table-scroll")).toBeInTheDocument();
+    expect(screen.getByTestId("preview-table-list")).toBeInTheDocument();
   });
 });

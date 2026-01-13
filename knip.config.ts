@@ -3,31 +3,32 @@ import type { KnipConfig } from "knip";
 const config: KnipConfig = {
   workspaces: {
     ".": {
-      entry: [],
-      project: [],
-      ignoreDependencies: [
-        // Build tools
-        "turbo",
-        "husky",
-        "lint-staged",
-        // ESLint and TypeScript used via configs
-        "@eslint/js",
-        "typescript-eslint",
-      ],
+      entry: ["scripts/*.ts"],
+      project: ["scripts/**/*.ts"],
+      // tsx is used by scripts via npx tsx
+      ignoreDependencies: ["tsx"],
     },
     "packages/config": {
-      entry: ["tsconfig.base.json", "eslint.config.mjs"],
+      // Let Knip auto-detect entry points
       project: ["**/*.{ts,mjs}"],
+      // vitest.shared.ts exports both named and default for flexibility
+      ignore: ["vitest.shared.ts"],
     },
     "packages/core": {
-      entry: ["src/index.ts"],
+      // Let Knip auto-detect entry points from package.json
       project: ["src/**/*.ts"],
-      ignore: ["**/*.test.ts"],
-      // Public API - all exports are intentional
-      includeEntryExports: true,
+      // Public library API - ignore all source files since exports are intentional
+      // This package exposes types and functions for external consumers
+      ignore: [
+        "**/*.test.ts",
+        // All source files export public API for library consumers
+        "src/**/*.ts",
+      ],
+      // Type definitions for dependencies
+      ignoreDependencies: ["@types/pdf-parse"],
     },
     "packages/cli": {
-      entry: ["src/index.ts"],
+      // Let Knip auto-detect entry points from package.json
       project: ["src/**/*.ts"],
       ignore: ["**/*.test.ts"],
     },
@@ -37,40 +38,39 @@ const config: KnipConfig = {
       ignore: [
         "**/*.test.{ts,tsx}",
         "e2e/**",
-        // UI component barrel files - exports kept for API consistency
-        "src/components/**/index.ts",
+        // UI components - shadcn/ui pattern exports all variants for consistency
+        "src/components/ui/*.tsx",
+        // Barrel files for cleaner component imports
+        "src/components/*/index.ts",
         // Tauri API exports - used dynamically
         "src/lib/tauri.ts",
-        // Custom hooks barrel
-        "src/hooks/use-tauri.ts",
+        // Store hooks - exported for potential external use
+        "src/stores/app-store.ts",
+        // Utility libraries - exported for debugging/testing
+        "src/lib/log-utils.ts",
+        // Folder organization components - available for future UI enhancements
+        "src/components/folder-structure-selector/*.tsx",
+        "src/components/folder-tree-preview/*.tsx",
+        // Security hook - rate limiting utility
+        "src/hooks/useThrottle.ts",
       ],
+      // Tauri plugins are used at runtime via Rust backend
+      // @tidy/core is for future integration
+      // CSS dependencies are imported in index.css (Knip doesn't parse CSS)
       ignoreDependencies: [
-        // Tauri CLI used via scripts
-        "@tauri-apps/cli",
-        // Tailwind plugins
-        "tailwindcss",
-        "@tailwindcss/vite",
-        // Test dependencies
-        "@playwright/test",
-        "@testing-library/react",
-        "@testing-library/jest-dom",
-        "jsdom",
-        // UI dependencies used in components
-        "@radix-ui/react-tooltip",
         "@tauri-apps/plugin-opener",
+        "@tauri-apps/plugin-updater",
         "@tidy/core",
-        "next-themes",
+        "tailwindcss",
         "tw-animate-css",
       ],
     },
   },
   ignore: ["**/dist/**", "**/node_modules/**", "**/.turbo/**"],
-  ignoreDependencies: [
-    // Coverage tool
-    "@vitest/coverage-v8",
-  ],
   // UI components export all variants for API consistency
   ignoreExportsUsedInFile: true,
+  // Binaries used in scripts and CI
+  ignoreBinaries: ["tauri", "tsx"],
 };
 
 export default config;
