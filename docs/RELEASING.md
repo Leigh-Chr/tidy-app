@@ -84,13 +84,13 @@ git push && git push --tags
 ### 3. Monitor Build
 
 The release workflow automatically starts when you push a tag. Monitor progress at:
-`https://github.com/YOUR_USERNAME/tidy-app/actions`
+`https://github.com/Leigh-Chr/tidy-app/actions`
 
 ### 4. Publish Release
 
 By default, releases are created as drafts. After verifying the build artifacts:
 
-1. Go to `https://github.com/YOUR_USERNAME/tidy-app/releases`
+1. Go to `https://github.com/Leigh-Chr/tidy-app/releases`
 2. Find the draft release
 3. Edit release notes if needed
 4. Click "Publish release"
@@ -133,7 +133,7 @@ Users can verify downloads using the checksums file:
 
 ```bash
 # Download checksums
-curl -LO https://github.com/YOUR_USERNAME/tidy-app/releases/download/vX.Y.Z/checksums-sha256.txt
+curl -LO https://github.com/Leigh-Chr/tidy-app/releases/download/vX.Y.Z/checksums-sha256.txt
 
 # Verify a specific file
 sha256sum -c checksums-sha256.txt --ignore-missing
