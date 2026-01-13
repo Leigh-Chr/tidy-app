@@ -4,8 +4,14 @@
  * AC covered:
  * - AC4: Defaults documented in help (config show)
  * - AC5: Defaults can be exported (config init)
+ *
+ * Note: Some tests use XDG_CONFIG_HOME which is only respected on Linux.
+ * On macOS, env-paths uses ~/Library/Preferences and ignores XDG vars.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+// Skip config file creation tests on macOS - env-paths ignores XDG_CONFIG_HOME
+const isMacOS = process.platform === 'darwin';
 import { execSync } from 'node:child_process';
 import { mkdir, rm, readFile, access } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
@@ -101,7 +107,8 @@ describe('tidy config commands', () => {
   });
 
   // AC5: Defaults can be exported
-  describe('config init', () => {
+  // Skip on macOS - env-paths ignores XDG_CONFIG_HOME
+  describe.skipIf(isMacOS)('config init', () => {
     it('creates config file with defaults', async () => {
       execSync(`node ${CLI_PATH} config init`, {
         encoding: 'utf-8',

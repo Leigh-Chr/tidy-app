@@ -6,6 +6,9 @@
  * - AC3: Force flag skips confirmation
  * - AC4: Reset reports what was changed
  * - AC5: Reset handles missing config gracefully
+ *
+ * Note: These tests use XDG_CONFIG_HOME which is only respected on Linux.
+ * On macOS, env-paths uses ~/Library/Preferences and ignores XDG vars.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execSync, spawn, type ChildProcess } from 'node:child_process';
@@ -17,7 +20,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = resolve(__dirname, '../../dist/index.js');
 
-describe('tidy config reset', () => {
+// Skip on macOS - env-paths ignores XDG_CONFIG_HOME and uses ~/Library/Preferences
+const isMacOS = process.platform === 'darwin';
+
+describe.skipIf(isMacOS)('tidy config reset', () => {
   let testDir: string;
   let xdgConfigHome: string;
   let configDir: string;

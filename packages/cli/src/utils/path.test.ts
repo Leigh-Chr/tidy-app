@@ -9,7 +9,7 @@
  * - AC6: Home directory expansion works
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { resolvePath, validateFolder, getFolderToScan } from './path.js';
@@ -18,8 +18,10 @@ describe('path utilities', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `tidy-path-test-${Date.now()}`);
-    await mkdir(testDir, { recursive: true });
+    const tempPath = join(tmpdir(), `tidy-path-test-${Date.now()}`);
+    await mkdir(tempPath, { recursive: true });
+    // Resolve symlinks (e.g., /tmp -> /private/tmp on macOS)
+    testDir = await realpath(tempPath);
   });
 
   afterEach(async () => {
