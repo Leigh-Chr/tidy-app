@@ -1,3 +1,5 @@
-# Type check and lint before pushing
+# Full validation before pushing
 pnpm run lint
+pnpm run knip
+pnpm run test
 pnpm run build

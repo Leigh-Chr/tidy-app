@@ -5,8 +5,6 @@ const config: KnipConfig = {
     ".": {
       entry: ["scripts/*.ts"],
       project: ["scripts/**/*.ts"],
-      // tsx is used by scripts via npx tsx
-      ignoreDependencies: ["tsx"],
     },
     "packages/config": {
       // Let Knip auto-detect entry points
@@ -70,7 +68,7 @@ const config: KnipConfig = {
   // UI components export all variants for API consistency
   ignoreExportsUsedInFile: true,
   // Binaries used in scripts and CI
-  ignoreBinaries: ["tauri", "tsx"],
+  ignoreBinaries: ["tauri"],
 };
 
 export default config;
