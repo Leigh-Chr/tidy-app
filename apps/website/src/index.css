@@ -477,3 +477,51 @@ body {
 .dark .interactive-glow:hover {
 	box-shadow: 0 0 25px oklch(0.7 0.14 180 / 0.2), 0 0 50px oklch(0.7 0.12 180 / 0.1);
 }
+
+/* Button styles */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	white-space: nowrap;
+	border-radius: var(--radius-md);
+	font-size: var(--font-size-small);
+	font-weight: 500;
+	transition: all 0.2s var(--ease-smooth);
+	outline: none;
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.btn:focus-visible {
+	ring: 3px solid var(--ring);
+	ring-opacity: 0.5;
+	box-shadow: 0 0 0 3px oklch(0.55 0.15 180 / 0.3);
+}
+
+.btn-primary {
+	background-color: var(--primary);
+	color: var(--primary-foreground);
+	box-shadow: var(--shadow-1);
+}
+
+.btn-primary:hover {
+	background-color: oklch(from var(--primary) calc(l * 0.9) c h);
+	box-shadow: var(--shadow-2);
+}
+
+.btn-primary:active {
+	box-shadow: var(--shadow-1);
+}
+
+.btn-outline {
+	border: 1px solid var(--border);
+	background-color: var(--background);
+	box-shadow: var(--shadow-1);
+}
+
+.btn-outline:hover {
+	background-color: var(--accent);
+	color: var(--accent-foreground);
+}
